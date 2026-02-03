@@ -7,7 +7,7 @@ import firRoutes from './routes/firs';
 
 dotenv.config();
 
-const app = express();
+export const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
@@ -15,7 +15,7 @@ app.use(cors({
     origin: 'http://localhost:3000', // Allow frontend
     credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 // Routes
@@ -27,6 +27,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/firs', firRoutes);
 
 // Start Server
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}

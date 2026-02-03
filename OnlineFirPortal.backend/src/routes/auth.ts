@@ -40,7 +40,7 @@ setInterval(() => {
 // ==========================================
 router.post('/register', async (req, res) => {
     try {
-        const { name, email, mobile, password, aadhaar, role, policeStation, badgeNumber, mfaEnabled } = req.body;
+        const { name, email, mobile, password, aadhaar, role, policeStation, badgeNumber, mfaEnabled, mfaSecret: requestMfaSecret } = req.body;
 
         // Basic Validation
         if (!name || !email || !mobile || !password) {
@@ -73,7 +73,7 @@ router.post('/register', async (req, res) => {
         const { hash, salt } = await hashPassword(password);
 
         // MFA Secret
-        const mfaSecret = mfaEnabled ? generateMFASecret() : undefined;
+        const mfaSecret = mfaEnabled ? (requestMfaSecret || generateMFASecret()) : undefined;
 
         const user = createUser({
             name,
@@ -233,19 +233,15 @@ router.post('/verify-mfa', async (req, res) => {
         if (storedOTP) {
             if (storedOTP.expires < Date.now()) {
                 otpStore.delete(user.id);
-                res.status(401).json({ error: 'OTP expired' });
-                return;
-            }
-            if (storedOTP.otp === otp.trim()) {
+            } else if (storedOTP.otp === otp.trim()) {
                 isVerified = true;
                 otpStore.delete(user.id);
             }
-        } else if (user.mfaSecret) {
+        }
+
+        if (!isVerified && user.mfaSecret) {
             // Fallback to TOTP check
             isVerified = await verifyTOTP(otp, user.mfaSecret);
-        } else {
-            res.status(401).json({ error: 'OTP expired or not found' });
-            return;
         }
 
         if (!isVerified) {

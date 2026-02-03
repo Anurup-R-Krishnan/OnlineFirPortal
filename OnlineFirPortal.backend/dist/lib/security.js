@@ -203,22 +203,15 @@ function generateTOTPSecret() {
     return secret;
 }
 async function generateTOTP(secret, timeStep = 30) {
-    // Check if Web Crypto API is available
     if (typeof crypto === 'undefined' || !crypto.subtle) {
-        if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-            throw new Error("Secure context required. Please use 'localhost' or HTTPS to enable MFA features.");
-        }
         throw new Error("Web Crypto API not available in this environment.");
     }
     const counter = Math.floor(Date.now() / 1000 / timeStep);
     return computeTOTPCode(secret, counter);
 }
 async function verifyTOTP(token, secret, timeWindow = 1) {
-    // Check if Web Crypto API is available
     if (typeof crypto === 'undefined' || !crypto.subtle) {
-        if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-            throw new Error("Secure context required. Please use 'localhost' or HTTPS to enable MFA features.");
-        }
+        throw new Error("Web Crypto API not available in this environment.");
     }
     const timeStep = 30;
     for (let i = -timeWindow; i <= timeWindow; i++) {

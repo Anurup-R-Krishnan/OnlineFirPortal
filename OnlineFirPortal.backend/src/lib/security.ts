@@ -289,11 +289,7 @@ export function generateTOTPSecret(): string {
 }
 
 export async function generateTOTP(secret: string, timeStep: number = 30): Promise<string> {
-  // Check if Web Crypto API is available
   if (typeof crypto === 'undefined' || !crypto.subtle) {
-    if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-      throw new Error("Secure context required. Please use 'localhost' or HTTPS to enable MFA features.");
-    }
     throw new Error("Web Crypto API not available in this environment.");
   }
 
@@ -302,11 +298,8 @@ export async function generateTOTP(secret: string, timeStep: number = 30): Promi
 }
 
 export async function verifyTOTP(token: string, secret: string, timeWindow: number = 1): Promise<boolean> {
-  // Check if Web Crypto API is available
   if (typeof crypto === 'undefined' || !crypto.subtle) {
-    if (typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost') {
-      throw new Error("Secure context required. Please use 'localhost' or HTTPS to enable MFA features.");
-    }
+    throw new Error("Web Crypto API not available in this environment.");
   }
 
   const timeStep = 30;
