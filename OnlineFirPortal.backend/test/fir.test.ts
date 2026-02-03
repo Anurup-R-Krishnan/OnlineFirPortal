@@ -1,3 +1,4 @@
+import { test, expect, beforeAll, afterAll } from "bun:test";
 import fs from 'fs';
 import {
   TEST_DB_PATH,
@@ -39,7 +40,7 @@ async function postJson(path: string, body: Record<string, any>, token?: string)
 
 async function getJson(path: string, token?: string) {
   const res = await fetch(`${baseUrl}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   const json = await res.json().catch(() => ({}));
   return { status: res.status, json };
