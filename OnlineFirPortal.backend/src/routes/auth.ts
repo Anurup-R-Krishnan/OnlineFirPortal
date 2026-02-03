@@ -116,8 +116,12 @@ router.post('/login', async (req, res) => {
             return;
         }
 
-        const sanitizedEmail = email.trim().toLowerCase();
-        const user = getUserByIdentifier(sanitizedEmail);
+        const identifier = email.trim().toLowerCase();
+        const normalizedMobile = identifier.replace(/\s+/g, '').replace(/^\+?91/, '').replace(/^0+/, '');
+        let user = getUserByIdentifier(identifier);
+        if (!user && normalizedMobile !== identifier) {
+            user = getUserByIdentifier(normalizedMobile);
+        }
 
         if (!user) {
             res.status(401).json({ error: 'Invalid email or password' });

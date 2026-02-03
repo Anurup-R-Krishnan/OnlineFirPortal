@@ -6,6 +6,7 @@ import {
     updateFIRStatus,
     assignOfficer
 } from '../lib/db';
+import { verifySignature } from '../lib/security';
 import {
     authenticateToken,
     checkPermission,
@@ -39,7 +40,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // POST /api/firs
-router.post('/', (req: Request, res: Response) => {
+router.post('/', async (req: Request, res: Response) => {
     try {
         const user = req.user!;
 
@@ -53,6 +54,18 @@ router.post('/', (req: Request, res: Response) => {
         const body = req.body;
         if (!body) {
             res.status(400).json({ error: 'Body required' });
+            return;
+        }
+
+        const { signature, signaturePublicKey, signatureData } = body;
+        if (!signature || !signaturePublicKey || !signatureData) {
+            res.status(400).json({ error: 'Signature, public key, and signature data are required' });
+            return;
+        }
+
+        const isSignatureValid = await verifySignature(signatureData, signature, signaturePublicKey);
+        if (!isSignatureValid) {
+            res.status(400).json({ error: 'Invalid digital signature' });
             return;
         }
 
