@@ -3,8 +3,6 @@ import { z } from 'zod';
 import {
     verifyPassword,
     hashPassword,
-    generateTOTPSecret,
-    verifyTOTP
 } from '../lib/security';
 import { sendOTPEmail } from '../lib/email-service';
 import {
@@ -18,8 +16,7 @@ import {
     generateAccessToken,
     generateRefreshToken,
     verifyAccessToken,
-    verifyRefreshToken,
-    generateMFASecret
+    verifyRefreshToken
 } from '../lib/jwt';
 import { authenticateToken } from '../lib/auth-middleware';
 
@@ -135,7 +132,7 @@ router.post('/aadhaar/verify', async (req, res) => {
 // ==========================================
 router.post('/register', async (req, res) => {
     try {
-        const { name, email, mobile, password, aadhaar, role, policeStation, badgeNumber, mfaEnabled, mfaSecret: requestMfaSecret } = req.body;
+        const { name, email, mobile, password, aadhaar, role, policeStation, badgeNumber, mfaEnabled } = req.body;
 
         // Basic Validation
         if (!name || !email || !mobile || !password) {
@@ -143,22 +140,25 @@ router.post('/register', async (req, res) => {
             return;
         }
 
+        const normalizedEmail = String(email).trim().toLowerCase();
+        const normalizedMobile = String(mobile).replace(/\s+/g, '').replace(/^\+?91/, '').replace(/^0+/, '');
+
         // Email Regex
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(normalizedEmail)) {
             res.status(400).json({ error: 'Invalid email format' });
             return;
         }
 
         // Mobile Regex (Indian)
         const mobileRegex = /^[6-9]\d{9}$/;
-        if (!mobileRegex.test(mobile.replace(/\s/g, ''))) {
+        if (!mobileRegex.test(normalizedMobile)) {
             res.status(400).json({ error: 'Invalid mobile number' });
             return;
         }
 
         // Check existence
-        const existingUser = getUserByIdentifier(email);
+        const existingUser = getUserByIdentifier(normalizedEmail) || getUserByIdentifier(normalizedMobile);
         if (existingUser) {
             res.status(409).json({ error: 'User with this email or mobile already exists' });
             return;
@@ -168,20 +168,17 @@ router.post('/register', async (req, res) => {
         const { hash, salt } = await hashPassword(password);
 
         // MFA Secret
-        const mfaSecret = mfaEnabled ? (requestMfaSecret || generateMFASecret()) : undefined;
-
         const user = createUser({
             name,
-            email,
-            mobile,
+            email: normalizedEmail,
+            mobile: normalizedMobile,
             aadhaar,
             role: role || 'citizen',
             passwordHash: hash,
             passwordSalt: salt,
             policeStation,
             badgeNumber,
-            mfaEnabled: mfaEnabled || false,
-            mfaSecret
+            mfaEnabled: mfaEnabled || false
         });
 
         // Strip sensitive data
@@ -338,11 +335,6 @@ router.post('/verify-mfa', async (req, res) => {
                 isVerified = true;
                 otpStore.delete(user.id);
             }
-        }
-
-        if (!isVerified && user.mfaSecret) {
-            // Fallback to TOTP check
-            isVerified = await verifyTOTP(otp, user.mfaSecret);
         }
 
         if (!isVerified) {

@@ -76,17 +76,4 @@ export function verifyRefreshToken(token: string): { userId: string } | null {
   }
 }
 
-/**
- * Generate OTP for MFA
- */
-export function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
-
-/**
- * Generate MFA secret for TOTP (Time-based OTP)
- */
-export function generateMFASecret(): string {
-  return randomHex(20);
-}
 

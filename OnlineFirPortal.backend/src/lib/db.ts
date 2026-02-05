@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import { getDatabase } from './database-connection';
 
@@ -386,13 +384,13 @@ export function createUser(user: any) {
 
 export function getUserByEmail(email: string) {
   const d = getDB();
-  const user = d.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  const user = d.prepare('SELECT * FROM users WHERE lower(email) = lower(?)').get(email);
   if (!user) return null;
   return { ...user, mfaEnabled: !!user.mfaEnabled }; // SQLite stores bools as ints
 }
 export function getUserByIdentifier(identifier: string) {
   const d = getDB();
-  const user = d.prepare('SELECT * FROM users WHERE email = ? OR mobile = ? OR aadhaar = ?').get(identifier, identifier, identifier);
+  const user = d.prepare('SELECT * FROM users WHERE lower(email) = lower(?) OR mobile = ? OR aadhaar = ?').get(identifier, identifier, identifier);
   if (!user) return null;
   return { ...user, mfaEnabled: !!user.mfaEnabled };
 }
