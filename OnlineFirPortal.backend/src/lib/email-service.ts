@@ -5,8 +5,13 @@
 
 import { Resend } from 'resend';
 
-// Initialize Resend with API key from environment
-const resend = new Resend(process.env.RESEND_API_KEY || 're_demo_key');
+// Initialize Resend with API key from environment (lazy)
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+
+function getResendClient() {
+  if (!RESEND_API_KEY) return null;
+  return new Resend(RESEND_API_KEY);
+}
 
 // Sender email (must be verified in Resend dashboard)
 const FROM_EMAIL = process.env.FROM_EMAIL || 'FIR Portal <onboarding@resend.dev>';
@@ -21,13 +26,23 @@ export async function sendOTPEmail(
   userName: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // For demo/development, log OTP to console
-    if (process.env.NODE_ENV === 'development' || !process.env.RESEND_API_KEY) {
+    // If no API key, fall back to console
+    if (!RESEND_API_KEY) {
       console.log('[email-service] OTP for', to, ':', otp);
       return { success: true };
     }
 
+    if (!FROM_EMAIL) {
+      return { success: false, error: 'FROM_EMAIL is not configured' };
+    }
+
     // Send actual email in production
+    const resend = getResendClient();
+    if (!resend) {
+      console.log('[email-service] OTP for', to, ':', otp);
+      return { success: true };
+    }
+
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: [to],
@@ -58,7 +73,17 @@ export async function sendFIRConfirmationEmail(
   firNumber: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (process.env.NODE_ENV === 'development' || !process.env.RESEND_API_KEY) {
+    if (!RESEND_API_KEY) {
+      console.log('[email-service] FIR confirmation for', to, ':', firNumber);
+      return { success: true };
+    }
+
+    if (!FROM_EMAIL) {
+      return { success: false, error: 'FROM_EMAIL is not configured' };
+    }
+
+    const resend = getResendClient();
+    if (!resend) {
       console.log('[email-service] FIR confirmation for', to, ':', firNumber);
       return { success: true };
     }
@@ -94,7 +119,17 @@ export async function sendFIRStatusUpdateEmail(
   newStatus: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    if (process.env.NODE_ENV === 'development' || !process.env.RESEND_API_KEY) {
+    if (!RESEND_API_KEY) {
+      console.log('[email-service] FIR status update for', to);
+      return { success: true };
+    }
+
+    if (!FROM_EMAIL) {
+      return { success: false, error: 'FROM_EMAIL is not configured' };
+    }
+
+    const resend = getResendClient();
+    if (!resend) {
       console.log('[email-service] FIR status update for', to);
       return { success: true };
     }

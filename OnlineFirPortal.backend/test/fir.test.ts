@@ -1,5 +1,6 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import fs from 'fs';
+import { generateRSASigningKeyPair, signData } from '../src/lib/security';
 import {
   TEST_DB_PATH,
   uniqueEmail,
@@ -72,6 +73,17 @@ test('create FIR with authenticated citizen', async () => {
   const token = loginRes.json?.accessToken;
   expect(token).toBeTruthy();
 
+  const keys = await generateRSASigningKeyPair();
+  const keyRes = await postJson('/api/auth/keys', { publicKey: keys.publicKey, label: 'test-key' }, token);
+  expect(keyRes.status).toBe(201);
+
+  const signatureData = JSON.stringify({
+    complainantId: loginRes.json?.user?.id,
+    incidentDescription: 'Test FIR created by bun test',
+    createdAt: new Date().toISOString(),
+  });
+  const signature = await signData(signatureData, keys.privateKey);
+
   const createRes = await postJson('/api/firs', {
     complaintType: 'Theft',
     incidentDate: '2025-12-01',
@@ -83,6 +95,9 @@ test('create FIR with authenticated citizen', async () => {
     nearestLandmark: 'Metro Station',
     hasWitness: false,
     documents: [],
+    signature,
+    signaturePublicKey: keys.publicKey,
+    signatureData,
   }, token);
 
   expect(createRes.status).toBe(201);

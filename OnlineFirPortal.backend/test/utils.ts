@@ -27,7 +27,9 @@ export function uniqueEmail(prefix: string) {
 
 function addLogLine(line: string) {
   serverLogs.push(line);
-  const otpMatch = line.match(/Generated OTP for\s+([^:]+):\s*(\d{6})/i);
+  const otpMatch =
+    line.match(/Generated OTP for\s+([^:]+):\s*(\d{6})/i) ||
+    line.match(/OTP for\s+([^:]+)\s*:\s*(\d{6})/i);
   if (otpMatch?.[1] && otpMatch?.[2]) {
     const email = otpMatch[1].trim();
     const otp = otpMatch[2];
@@ -67,6 +69,7 @@ export async function startTestServer() {
       PORT: `${TEST_PORT}`,
       NODE_ENV: 'test',
       DATABASE_PATH: TEST_DB_PATH,
+      RESEND_API_KEY: '',
     },
   });
 

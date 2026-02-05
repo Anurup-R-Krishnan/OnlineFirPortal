@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth';
 import firRoutes from './routes/firs';
+import adminRoutes from './routes/admin';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/firs', firRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Start Server
 if (require.main === module) {

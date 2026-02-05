@@ -3,8 +3,10 @@ import {
     getAllFIRs,
     createFIR,
     getFIRById,
+    getFIRStats,
     updateFIRStatus,
-    assignOfficer
+    assignOfficer,
+    isUserPublicKeyRegistered
 } from '../lib/db';
 import { verifySignature } from '../lib/security';
 import {
@@ -63,6 +65,12 @@ router.post('/', async (req: Request, res: Response) => {
             return;
         }
 
+        const isRegisteredKey = isUserPublicKeyRegistered(user.userId, signaturePublicKey);
+        if (!isRegisteredKey) {
+            res.status(400).json({ error: 'Public key not registered for this user' });
+            return;
+        }
+
         const isSignatureValid = await verifySignature(signatureData, signature, signaturePublicKey);
         if (!isSignatureValid) {
             res.status(400).json({ error: 'Invalid digital signature' });
@@ -79,6 +87,25 @@ router.post('/', async (req: Request, res: Response) => {
     } catch (err: any) {
         console.error('[CREATE FIR ERROR]', err);
         res.status(500).json({ error: err.message || 'Unknown error' });
+    }
+});
+
+// GET /api/firs/stats
+router.get('/stats', (req: Request, res: Response) => {
+    try {
+        const user = req.user!;
+
+        const authResult = checkPermission(user, 'reports', 'read');
+        if (!authResult.allowed) {
+            res.status(403).json({ error: authResult.error });
+            return;
+        }
+
+        const stats = getFIRStats();
+        res.json(stats);
+    } catch (err: any) {
+        console.error('[GET FIR STATS ERROR]', err);
+        res.status(500).json({ error: err.message });
     }
 });
 
