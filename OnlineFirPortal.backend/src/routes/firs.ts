@@ -1,186 +1,588 @@
-import express, { Request, Response } from 'express';
-import {
-    getAllFIRs,
-    createFIR,
-    getFIRById,
-    getFIRStats,
-    updateFIRStatus,
-    assignOfficer,
-    isUserPublicKeyRegistered
-} from '../lib/db';
-import { verifySignature } from '../lib/security';
-import {
-    authenticateToken,
-    checkPermission,
-    requireRole
-} from '../lib/auth-middleware';
+import express from 'express';
+import { prisma } from '../lib/prisma';
+import { authenticateToken, requireRole } from '../lib/auth-middleware';
+import { logAudit } from '../lib/audit-logger';
+import { encryptData, decryptData, sanitizeInput, generateFIRNumber, verifySignature } from '../lib/security';
+import { UserRole, FIRStatus } from '@prisma/client';
 
 const router = express.Router();
 
-// Middleware to ensure all FIR routes are authenticated
-router.use(authenticateToken);
+const getIp = (req: express.Request): string => req.ip || req.socket.remoteAddress || 'unknown';
 
-// GET /api/firs
-router.get('/', (req: Request, res: Response) => {
+router.post('/', authenticateToken, requireRole(['CITIZEN']), async (req, res) => {
     try {
-        const user = req.user!;
-        const list = getAllFIRs();
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const ipAddress = getIp(req);
 
-        // Filter based on role
-        if (user.role === 'citizen') {
-            const userFirs = list.filter((fir: any) => fir.reporterId === user.userId);
-            res.json(userFirs);
+        const {
+            complaintType,
+            incidentDate,
+            incidentTime,
+            incidentDescription,
+            incidentState,
+            incidentDistrict,
+            incidentPlace,
+            nearestLandmark,
+            hasWitness,
+            witnessDetails,
+            suspectDetails,
+            ipcSections,
+        } = req.body;
+
+        if (!complaintType || !incidentDate || !incidentDescription || !incidentState || !incidentDistrict || !incidentPlace) {
+            res.status(400).json({ error: 'missing required fields' });
             return;
         }
 
-        // Police/Admin get all
-        res.json(list);
-    } catch (err: any) {
-        console.error('[GET FIRS ERROR]', err);
-        res.status(500).json({ error: err.message });
+        const referenceNumber = `FIR${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+        const firData = {
+            incidentDescription: sanitizeInput(incidentDescription),
+            incidentDate: new Date(incidentDate),
+            incidentTime: incidentTime || null,
+            incidentState: sanitizeInput(incidentState),
+            incidentDistrict: sanitizeInput(incidentDistrict),
+            incidentPlace: sanitizeInput(incidentPlace),
+            nearestLandmark: nearestLandmark ? sanitizeInput(nearestLandmark) : null,
+            hasWitness: hasWitness || false,
+            witnessDetails: witnessDetails ? sanitizeInput(witnessDetails) : null,
+            suspectDetails: suspectDetails ? sanitizeInput(suspectDetails) : null,
+            ipcSections: ipcSections || null,
+        };
+
+        const encryptedData = await encryptData(JSON.stringify(firData));
+
+        const fir = await prisma.fIR.create({
+            data: {
+                referenceNumber,
+                reporterId: userId,
+                title: sanitizeInput(complaintType),
+                crimeType: sanitizeInput(complaintType),
+                description: sanitizeInput(incidentDescription),
+                incidentDate: new Date(incidentDate),
+                incidentTime: incidentTime || '',
+                incidentPlace: sanitizeInput(incidentPlace),
+                ipcSections: ipcSections || null,
+                encryptedData,
+                status: 'DRAFT',
+                priority: 'MEDIUM',
+            },
+        });
+
+        await logAudit({
+            action: 'FIR_CREATED',
+            userId,
+            userRole,
+            firId: fir.id,
+            changes: { firId: fir.id, referenceNumber },
+            ipAddress,
+        });
+
+        res.status(201).json({
+            success: true,
+            id: fir.id,
+            referenceNumber: fir.referenceNumber,
+            status: fir.status,
+            message: 'fir created successfully',
+        });
+    } catch (error: any) {
+        console.error('[create fir error]', error);
+        res.status(500).json({ error: 'failed to create fir' });
     }
 });
 
-// POST /api/firs
-router.post('/', async (req: Request, res: Response) => {
+router.post('/:id/submit', authenticateToken, requireRole(['CITIZEN']), async (req, res) => {
     try {
-        const user = req.user!;
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const ipAddress = getIp(req);
+        const { id } = req.params;
 
-        // Authorize
-        const authResult = checkPermission(user, 'fir', 'create');
-        if (!authResult.allowed) {
-            res.status(403).json({ error: authResult.error });
-            return;
-        }
+        const fir = await prisma.fIR.findUnique({
+            where: { id: String(id) },
+        });
 
-        const body = req.body;
-        if (!body) {
-            res.status(400).json({ error: 'Body required' });
-            return;
-        }
-
-        const { signature, signaturePublicKey, signatureData } = body;
-        if (!signature || !signaturePublicKey || !signatureData) {
-            res.status(400).json({ error: 'Signature, public key, and signature data are required' });
-            return;
-        }
-
-        const isRegisteredKey = isUserPublicKeyRegistered(user.userId, signaturePublicKey);
-        if (!isRegisteredKey) {
-            res.status(400).json({ error: 'Public key not registered for this user' });
-            return;
-        }
-
-        const isSignatureValid = await verifySignature(signatureData, signature, signaturePublicKey);
-        if (!isSignatureValid) {
-            res.status(400).json({ error: 'Invalid digital signature' });
-            return;
-        }
-
-        // Add reporter info
-        body.complainantId = user.userId;
-        body.reporterId = user.userId;
-        body.complainantName = user.name || user.email; // Ensure actor is set
-
-        const created = createFIR(body);
-        res.status(201).json(created);
-    } catch (err: any) {
-        console.error('[CREATE FIR ERROR]', err);
-        res.status(500).json({ error: err.message || 'Unknown error' });
-    }
-});
-
-// GET /api/firs/stats
-router.get('/stats', (req: Request, res: Response) => {
-    try {
-        const user = req.user!;
-
-        const authResult = checkPermission(user, 'reports', 'read');
-        if (!authResult.allowed) {
-            res.status(403).json({ error: authResult.error });
-            return;
-        }
-
-        const stats = getFIRStats();
-        res.json(stats);
-    } catch (err: any) {
-        console.error('[GET FIR STATS ERROR]', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GET /api/firs/:id
-router.get('/:id', (req: Request, res: Response) => {
-    try {
-        const user = req.user!;
-        const { id } = req.params as { id: string };
-
-        const fir = getFIRById(id);
         if (!fir) {
-            res.status(404).json({ error: 'Not found' });
+            res.status(404).json({ error: 'fir not found' });
             return;
         }
 
-        const authResult = checkPermission(user, 'fir', 'read', fir.reporterId);
-        if (!authResult.allowed) {
-            res.status(403).json({ error: authResult.error });
+        if (fir.reporterId !== userId) {
+            res.status(403).json({ error: 'not authorized to submit this fir' });
             return;
         }
 
-        res.json(fir);
-    } catch (err: any) {
-        console.error('[GET FIR ERROR]', err);
-        res.status(500).json({ error: err.message });
-    }
-});
+        const { signature } = req.body;
 
-// PATCH /api/firs/:id
-router.patch('/:id', async (req: Request, res: Response) => {
-    try {
-        const user = req.user!;
-        const { id } = req.params as { id: string };
+        // verify digital signature if provided
+        if (signature) {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { publicKey: true },
+            });
 
-        const fir = getFIRById(id);
-        if (!fir) {
-            res.status(404).json({ error: 'Not found' });
-            return;
-        }
-
-        const authResult = checkPermission(user, 'fir', 'update', fir.reporterId);
-        if (!authResult.allowed) {
-            res.status(403).json({ error: authResult.error });
-            return;
-        }
-
-        const body = req.body;
-        const { status, assignedOfficerId, officerName, policeStation, reason, performedBy, note } = body;
-
-        let updated;
-        if (status) {
-            if (status === 'rejected') {
-                updated = updateFIRStatus(id, 'rejected', (performedBy || user.email) as string, reason ? `Rejected: ${reason}` : 'Rejected');
-            } else {
-                updated = updateFIRStatus(id, status as string, (performedBy || user.email) as string, note as string || '');
-            }
-        } else if (assignedOfficerId) {
-            // Check assign permission
-            const assignResult = checkPermission(user, 'fir', 'assign', fir.reporterId);
-            if (!assignResult.allowed) {
-                res.status(403).json({ error: assignResult.error });
+            if (!user?.publicKey) {
+                res.status(400).json({ error: 'public key not registered, please register your public key first' });
                 return;
             }
-            updated = assignOfficer(id, assignedOfficerId as string, officerName as string, policeStation as string, (performedBy || user.email) as string);
+
+            // create signature data from fir details
+            const signatureData = JSON.stringify({
+                firId: fir.id,
+                referenceNumber: fir.referenceNumber,
+                reporterId: fir.reporterId,
+                createdAt: fir.createdAt,
+            });
+
+            const isValid = await verifySignature(signatureData, signature, user.publicKey);
+            if (!isValid) {
+                res.status(400).json({ error: 'invalid signature' });
+                return;
+            }
         }
 
-        if (!updated) {
-            res.status(400).json({ error: 'Update failed' });
+        if (fir.status !== 'DRAFT') {
+            res.status(400).json({ error: 'fir already submitted' });
             return;
         }
-        res.json(updated);
 
-    } catch (err: any) {
-        console.error('[PATCH FIR ERROR]', err);
-        res.status(500).json({ error: err.message });
+        const updateData: any = {
+            status: 'SUBMITTED',
+            submittedAt: new Date(),
+        };
+        if (signature) {
+            updateData.signature = signature;
+            updateData.signedAt = new Date();
+        }
+
+        const updatedFir = await prisma.fIR.update({
+            where: { id: String(id) },
+            data: updateData,
+        });
+
+        await prisma.timeline.create({
+            data: {
+                firId: updatedFir.id,
+                actorId: userId,
+                actorName: req.user!.name || req.user!.email,
+                action: 'FIR submitted by citizen',
+            },
+        });
+
+        await logAudit({
+            action: 'FIR_SUBMITTED',
+            userId,
+            userRole,
+            firId: updatedFir.id,
+            changes: { previousStatus: 'DRAFT', newStatus: 'SUBMITTED', signed: !!signature },
+            ipAddress,
+        });
+
+        res.json({
+            success: true,
+            id: updatedFir.id,
+            status: updatedFir.status,
+            message: 'fir submitted successfully',
+        });
+    } catch (error: any) {
+        console.error('[submit fir error]', error);
+        res.status(500).json({ error: 'failed to submit fir' });
+    }
+});
+
+router.get('/', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const { status, page = '1', limit = '20' } = req.query;
+
+        const where: any = {};
+
+        if (userRole === 'CITIZEN') {
+            where.reporterId = userId;
+        } else if (userRole === 'OFFICER' || userRole === 'SHO') {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { policeStation: true },
+            });
+            if (user?.policeStation) {
+                where.assignedStation = user.policeStation;
+            }
+        }
+
+        if (status) {
+            where.status = String(status);
+        }
+
+        const skip = (parseInt(String(page)) - 1) * parseInt(String(limit));
+
+        const [firs, total] = await Promise.all([
+            prisma.fIR.findMany({
+                where,
+                select: {
+                    id: true,
+                    referenceNumber: true,
+                    title: true,
+                    crimeType: true,
+                    status: true,
+                    priority: true,
+                    createdAt: true,
+                    submittedAt: true,
+                    assignedStation: true,
+                    reporter: {
+                        select: {
+                            id: true,
+                            name: true,
+                            email: true,
+                            mobile: true,
+                        },
+                    },
+                    assignedOfficer: {
+                        select: {
+                            id: true,
+                            name: true,
+                            badgeNumber: true,
+                        },
+                    },
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: parseInt(String(limit)),
+            }),
+            prisma.fIR.count({ where }),
+        ]);
+
+        res.json({
+            firs,
+            total,
+            page: parseInt(String(page)),
+            limit: parseInt(String(limit)),
+            pages: Math.ceil(total / parseInt(String(limit))),
+        });
+    } catch (error: any) {
+        console.error('[list firs error]', error);
+        res.status(500).json({ error: 'failed to list firs' });
+    }
+});
+
+// ==========================================
+// get fir statistics
+// ==========================================
+router.get('/stats', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+
+        const where: any = {};
+
+        if (userRole === 'CITIZEN') {
+            where.reporterId = userId;
+        } else if (userRole === 'OFFICER' || userRole === 'SHO') {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { policeStation: true },
+            });
+            if (user?.policeStation) {
+                where.assignedStation = user.policeStation;
+            }
+        }
+
+        const stats = await prisma.fIR.groupBy({
+            by: ['status'],
+            where,
+            _count: {
+                id: true,
+            },
+        });
+
+        const counts = {
+            total: 0,
+            pending: 0,
+            assigned: 0,
+            investigation: 0,
+            closed: 0,
+        };
+
+        stats.forEach((stat: any) => {
+            counts.total += stat._count.id;
+            switch (stat.status) {
+                case 'SUBMITTED':
+                    counts.pending += stat._count.id;
+                    break;
+                case 'UNDER_INVESTIGATION':
+                    counts.investigation += stat._count.id;
+                    counts.assigned += stat._count.id;
+                    break;
+                case 'CLOSED':
+                case 'REJECTED':
+                    counts.closed += stat._count.id;
+                    break;
+            }
+        });
+
+        res.json(counts);
+    } catch (error: any) {
+        console.error('[get fir stats error]', error);
+        res.status(500).json({ error: 'failed to get fir stats' });
+    }
+});
+
+router.get('/:id', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const { id } = req.params;
+
+        const fir = await prisma.fIR.findUnique({
+            where: { id: String(id) },
+            include: {
+                reporter: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        mobile: true,
+                    },
+                },
+                assignedOfficer: {
+                    select: {
+                        id: true,
+                        name: true,
+                        badgeNumber: true,
+                        rank: true,
+                    },
+                },
+                documents: true,
+                timeline: {
+                    include: {
+                        actor: {
+                            select: {
+                                name: true,
+                                role: true,
+                            },
+                        },
+                    },
+                    orderBy: { createdAt: 'asc' },
+                },
+            },
+        });
+
+        if (!fir) {
+            res.status(404).json({ error: 'fir not found' });
+            return;
+        }
+
+        if (userRole === 'CITIZEN' && fir.reporterId !== userId) {
+            res.status(403).json({ error: 'not authorized to view this fir' });
+            return;
+        }
+
+        const decryptedData = JSON.parse(await decryptData(fir.encryptedData || '{}'));
+
+        res.json({
+            ...fir,
+            ...decryptedData,
+            encryptedData: undefined,
+        });
+    } catch (error: any) {
+        console.error('[get fir error]', error);
+        res.status(500).json({ error: 'failed to get fir' });
+    }
+});
+
+router.post('/:id/assign', authenticateToken, requireRole(['ADMIN', 'SHO']), async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const ipAddress = getIp(req);
+        const { id } = req.params;
+        const { officerId, station } = req.body;
+
+        if (!officerId || !station) {
+            res.status(400).json({ error: 'officer id and station required' });
+            return;
+        }
+
+        const officer = await prisma.user.findUnique({
+            where: { id: officerId },
+        });
+
+        if (!officer || (officer.role !== 'OFFICER' && officer.role !== 'SHO')) {
+            res.status(400).json({ error: 'invalid officer' });
+            return;
+        }
+
+        const fir = await prisma.fIR.update({
+            where: { id: String(id) },
+            data: {
+                assignedOfficerId: officerId,
+                assignedStation: station,
+                status: 'UNDER_INVESTIGATION',
+            },
+        });
+
+        await prisma.timeline.create({
+            data: {
+                firId: fir.id,
+                actorId: userId,
+                actorName: req.user!.name || req.user!.email,
+                action: `assigned to officer ${officer.name} at ${station}`,
+            },
+        });
+
+        await logAudit({
+            action: 'FIR_ASSIGNED',
+            userId,
+            userRole,
+            firId: fir.id,
+            changes: { officerId, station },
+            ipAddress,
+        });
+
+        res.json({
+            success: true,
+            message: 'fir assigned successfully',
+        });
+    } catch (error: any) {
+        console.error('[assign fir error]', error);
+        res.status(500).json({ error: 'failed to assign fir' });
+    }
+});
+
+router.post('/:id/update-status', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const ipAddress = getIp(req);
+        const { id } = req.params;
+        const { status, remarks } = req.body;
+
+        if (!status) {
+            res.status(400).json({ error: 'status required' });
+            return;
+        }
+
+        const validStatuses: FIRStatus[] = ['SUBMITTED', 'UNDER_INVESTIGATION', 'CLOSED', 'REJECTED'];
+        if (!validStatuses.includes(status as FIRStatus)) {
+            res.status(400).json({ error: 'invalid status' });
+            return;
+        }
+
+        // require remarks for closing or rejecting
+        if ((status === 'CLOSED' || status === 'REJECTED') && !remarks) {
+            res.status(400).json({ error: 'remarks/reason required for closing or rejecting fir' });
+            return;
+        }
+
+        const fir = await prisma.fIR.findUnique({
+            where: { id: String(id) },
+        });
+
+        if (!fir) {
+            res.status(404).json({ error: 'fir not found' });
+            return;
+        }
+
+        const updateData: any = {
+            status: status as FIRStatus,
+        };
+        if (status === 'CLOSED') {
+            updateData.closedAt = new Date();
+        }
+
+        const updatedFir = await prisma.fIR.update({
+            where: { id: String(id) },
+            data: updateData,
+        });
+
+        await prisma.timeline.create({
+            data: {
+                firId: updatedFir.id,
+                actorId: userId,
+                actorName: req.user!.name || req.user!.email,
+                action: `status updated to ${status}`,
+                details: remarks || null,
+            },
+        });
+
+        await logAudit({
+            action: 'FIR_STATUS_UPDATED',
+            userId,
+            userRole,
+            firId: updatedFir.id,
+            changes: { previousStatus: fir.status, newStatus: status, remarks },
+            ipAddress,
+        });
+
+        res.json({
+            success: true,
+            message: 'fir status updated successfully',
+        });
+    } catch (error: any) {
+        console.error('[update fir status error]', error);
+        res.status(500).json({ error: 'failed to update fir status' });
+    }
+});
+
+// ==========================================
+// add investigation note
+// ==========================================
+router.post('/:id/notes', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const ipAddress = getIp(req);
+        const { id } = req.params;
+        const { note } = req.body;
+
+        if (!note) {
+            res.status(400).json({ error: 'note content required' });
+            return;
+        }
+
+        const fir = await prisma.fIR.findUnique({
+            where: { id: String(id) },
+        });
+
+        if (!fir) {
+            res.status(404).json({ error: 'fir not found' });
+            return;
+        }
+
+        // verify access (assigned officer or sho/admin)
+        if (userRole === 'OFFICER' && fir.assignedOfficerId !== userId) {
+            res.status(403).json({ error: 'not authorized to add notes to this fir' });
+            return;
+        }
+
+        const timelineEntry = await prisma.timeline.create({
+            data: {
+                firId: fir.id,
+                actorId: userId,
+                actorName: req.user!.name || req.user!.email,
+                action: 'INVESTIGATION_NOTE',
+                details: sanitizeInput(note),
+            },
+        });
+
+        await logAudit({
+            action: 'UPDATE_FIR',
+            userId,
+            userRole,
+            firId: fir.id,
+            changes: { action: 'added investigation note', noteId: timelineEntry.id },
+            ipAddress,
+        });
+
+        res.status(201).json({
+            success: true,
+            message: 'investigation note added successfully',
+            data: timelineEntry,
+        });
+    } catch (error: any) {
+        console.error('[add investigation note error]', error);
+        res.status(500).json({ error: 'failed to add investigation note' });
     }
 });
 

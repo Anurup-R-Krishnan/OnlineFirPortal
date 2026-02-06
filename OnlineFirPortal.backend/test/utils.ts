@@ -1,6 +1,42 @@
 import path from 'path';
 import fs from 'fs';
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import { prisma } from '../src/lib/prisma';
+
+export async function cleanDatabase() {
+  const tablenames = await prisma.$queryRaw<
+    Array<{ name: string }>
+  >`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_prisma_migrations';`;
+
+  for (const { name } of tablenames) {
+    try {
+      await prisma.$executeRawUnsafe(`DELETE FROM "${name}";`);
+    } catch (error) {
+      // ignore foreign key errors first pass
+    }
+  }
+  // serious cleanup
+  const deleteOrder = [
+    'AuditLog', 'Timeline', 'Document', 'Notification',
+    'Session', 'MFARecoveryCode', 'PasswordResetToken',
+    'FIR', 'User'
+  ];
+
+  // Use transaction for speed and safety
+  try {
+    await prisma.auditLog.deleteMany({});
+    await prisma.timeline.deleteMany({});
+    await prisma.document.deleteMany({});
+    await prisma.notification.deleteMany({});
+    await prisma.session.deleteMany({});
+    await prisma.mFARecoveryCode.deleteMany({});
+    await prisma.passwordResetToken.deleteMany({});
+    await prisma.fIR.deleteMany({});
+    await prisma.user.deleteMany({});
+  } catch (e) {
+    console.error('cleanup failed', e);
+  }
+}
 
 export const TEST_DB_PATH = path.join(process.cwd(), 'data', 'firs.test.db');
 const TEST_PORT = 3101;
@@ -70,6 +106,9 @@ export async function startTestServer() {
       NODE_ENV: 'test',
       DATABASE_PATH: TEST_DB_PATH,
       RESEND_API_KEY: '',
+      JWT_SECRET: 'test-jwt-secret',
+      JWT_REFRESH_SECRET: 'test-jwt-refresh-secret',
+      ENCRYPTION_KEY: '01234567890123456789012345678901', // 32 chars
     },
   });
 

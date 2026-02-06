@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "FIR" ADD COLUMN "closedAt" DATETIME;
+ALTER TABLE "FIR" ADD COLUMN "submittedAt" DATETIME;

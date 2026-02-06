@@ -24,6 +24,8 @@ export interface TokenPayload {
   role: string;
   mfaVerified: boolean;
   name?: string;
+  passwordChangeRequired?: boolean;
+  mfaSetupRequired?: boolean;
 }
 
 /**

@@ -1,0 +1,416 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// user roles enum
+enum UserRole {
+  CITIZEN
+  OFFICER
+  SHO
+  ADMIN
+  SUPER_ADMIN
+}
+
+// account status enum
+enum AccountStatus {
+  ACTIVE
+  LOCKED
+  SUSPENDED
+  INACTIVE
+}
+
+// fir status enum
+enum FIRStatus {
+  DRAFT
+  SUBMITTED
+  VERIFIED
+  ASSIGNED
+  UNDER_INVESTIGATION
+  INVESTIGATION
+  CHARGESHEET
+  CLOSED
+  REJECTED
+  ARCHIVED
+}
+
+// fir priority enum
+enum FIRPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// document type enum
+enum DocumentType {
+  IDENTITY_PROOF
+  ADDRESS_PROOF
+  PHOTOGRAPH
+  VIDEO
+  EVIDENCE
+  STATEMENT
+  OTHER
+}
+
+// notification type enum
+enum NotificationType {
+  SMS
+  EMAIL
+  IN_APP
+}
+
+// audit action type enum
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGOUT
+  REGISTER
+  MFA_SETUP
+  MFA_VERIFY
+  PASSWORD_CHANGE
+  PASSWORD_RESET_REQUEST
+  PASSWORD_RESET
+  ACCOUNT_LOCKED
+  ACCOUNT_UNLOCKED
+  FIR_CREATED
+  FIR_SUBMITTED
+  FIR_ASSIGNED
+  FIR_STATUS_UPDATED
+  CREATE_FIR
+  UPDATE_FIR
+  DELETE_FIR
+  ASSIGN_FIR
+  CLOSE_FIR
+  UPLOAD_DOCUMENT
+  DOWNLOAD_DOCUMENT
+  DELETE_DOCUMENT
+  CREATE_USER
+  UPDATE_USER
+  DELETE_USER
+  VIEW_AUDIT_LOG
+  SYSTEM_SETTING_CHANGE
+}
+
+// user model - comprehensive user management
+model User {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // basic information
+  name   String
+  email  String  @unique
+  mobile String  @unique
+  aadhaar String? // encrypted, optional for officers/admins
+
+  // authentication
+  passwordHash String
+  passwordSalt String
+  passwordChangedAt DateTime?
+  passwordHistory String? // json array of last 5 password hashes
+
+  // mfa
+  mfaEnabled Boolean @default(false)
+  mfaSecret  String? // totp secret
+  mfaSetupAt DateTime?
+
+  // account security
+  role              UserRole      @default(CITIZEN)
+  accountStatus     AccountStatus @default(ACTIVE)
+  failedLoginAttempts Int        @default(0)
+  lockedUntil       DateTime?
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+
+  // force actions on next login
+  forcePasswordChange Boolean @default(false)
+  forceMfaSetup       Boolean @default(false)
+
+  // digital signature
+  publicKey           String? // rsa public key for signature verification
+  publicKeyRegisteredAt DateTime?
+
+  // officer-specific fields
+  policeStation String? // for officers and shos
+  badgeNumber   String? // for officers and shos
+  rank          String? // for officers
+
+  // relations
+  firs                FIR[]                @relation("ReporterFIRs")
+  assignedFirs        FIR[]                @relation("AssignedFIRs")
+  documents           Document[]
+  auditLogs           AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+  mfaRecoveryCodes    MFARecoveryCode[]
+  notifications       Notification[]
+  sessions            Session[]
+  timelineEntries     Timeline[]
+
+  @@index([email])
+  @@index([mobile])
+  @@index([role])
+  @@index([accountStatus])
+}
+
+// fir model - first information report
+model FIR {
+  id              String   @id @default(uuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // identification
+  referenceNumber String @unique // auto-generated unique number
+  title           String // brief title/type
+
+  // complainant
+  reporterId String
+  reporter   User   @relation("ReporterFIRs", fields: [reporterId], references: [id])
+
+  // incident details
+  incidentDate     DateTime
+  incidentTime     String
+  incidentPlace    String
+  incidentLocation String? // gps coordinates
+  crimeType        String // type of crime
+  ipcSections      String? // applicable ipc sections
+  description      String // detailed description
+  estimatedLoss    String? // estimated loss/damage
+
+  // accused information (if known)
+  accusedInfo String? // json with accused details
+
+  // witnesses
+  witnessInfo String? // json with witness details
+
+  // status and assignment
+  status             FIRStatus   @default(SUBMITTED)
+  priority           FIRPriority @default(MEDIUM)
+  assignedOfficerId  String?
+  assignedOfficer    User?       @relation("AssignedFIRs", fields: [assignedOfficerId], references: [id])
+  assignedStation    String?
+
+  // encrypted sensitive data
+  encryptedData String? // additional encrypted data
+
+  // digital signature
+  signature     String? // digital signature of complainant
+  signedAt      DateTime?
+  submittedAt   DateTime?
+  closedAt      DateTime?
+
+  // relations
+  documents Document[]
+  timeline  Timeline[]
+  auditLogs AuditLog[]
+
+  @@index([reporterId])
+  @@index([assignedOfficerId])
+  @@index([status])
+  @@index([referenceNumber])
+  @@index([createdAt])
+}
+
+// document model - file attachments
+model Document {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // file information
+  filename String
+  mimetype String
+  size     Int
+  documentType DocumentType @default(OTHER)
+
+  // encrypted content
+  encryptedContent String // base64 encrypted content
+
+  // verification
+  verified   Boolean   @default(false)
+  verifiedBy String?
+  verifiedAt DateTime?
+
+  // relations
+  firId String
+  fir   FIR    @relation(fields: [firId], references: [id], onDelete: Cascade)
+
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+
+  @@index([firId])
+  @@index([uploadedById])
+}
+
+// audit log model - comprehensive audit trail
+model AuditLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // who
+  userId   String?
+  user     User?      @relation(fields: [userId], references: [id])
+  userRole UserRole?
+  userName String?
+
+  // what
+  action       AuditAction
+  resourceType String? // FIR, User, Document, etc
+  resourceId   String?
+
+  // how
+  ipAddress String?
+  userAgent String?
+
+  // details
+  changes String? // json with before/after state
+  success Boolean @default(true)
+  errorMessage String?
+
+  // relations
+  firId String?
+  fir   FIR?    @relation(fields: [firId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([resourceType, resourceId])
+}
+
+// password reset token model
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  // token
+  tokenHash String @unique
+
+  // user
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // status
+  used      Boolean   @default(false)
+  usedAt    DateTime?
+
+  // admin approval
+  adminApproved   Boolean   @default(false)
+  adminApprovedBy String?
+  adminApprovedAt DateTime?
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+// mfa recovery code model
+model MFARecoveryCode {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // code
+  codeHash String
+
+  // user
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // status
+  used   Boolean   @default(false)
+  usedAt DateTime?
+
+  @@index([userId])
+}
+
+// notification model
+model Notification {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // recipient
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // notification details
+  type    NotificationType
+  subject String
+  message String
+
+  // delivery status
+  sent   Boolean   @default(false)
+  sentAt DateTime?
+  error  String?
+
+  // read status
+  read   Boolean   @default(false)
+  readAt DateTime?
+
+  @@index([userId])
+  @@index([sent])
+  @@index([read])
+}
+
+// session model - track active sessions
+model Session {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  lastActivity DateTime @default(now())
+
+  // token
+  tokenHash String @unique
+
+  // user
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // session info
+  ipAddress String?
+  userAgent String?
+
+  // status
+  revoked   Boolean   @default(false)
+  revokedAt DateTime?
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+}
+
+// timeline model - fir activity timeline
+model Timeline {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // fir
+  firId String
+  fir   FIR    @relation(fields: [firId], references: [id], onDelete: Cascade)
+
+  // actor
+  actorId String?
+  actor   User?   @relation(fields: [actorId], references: [id])
+  actorName String // name at time of action
+
+  // action
+  action  String
+  details String?
+
+  // attachments
+  attachments String? // json array of attachment references
+
+  @@index([firId])
+  @@index([createdAt])
+}
+
+// system settings model
+model SystemSetting {
+  key       String   @id
+  value     String // json value
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}

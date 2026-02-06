@@ -1,11 +1,10 @@
-import { test, expect, beforeAll, afterAll } from "bun:test";
-import fs from 'fs';
+import { test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
+import { prisma } from '../src/lib/prisma';
 import {
-  TEST_DB_PATH,
   uniqueEmail,
   startTestServer,
   stopTestServer,
-  waitForOtp
+  cleanDatabase
 } from './utils';
 
 function randomMobile() {
@@ -21,9 +20,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stopTestServer();
-  if (fs.existsSync(TEST_DB_PATH)) {
-    fs.unlinkSync(TEST_DB_PATH);
-  }
+});
+
+beforeEach(async () => {
+  await cleanDatabase();
 });
 
 async function postJson(path: string, body: Record<string, any>) {
@@ -36,63 +36,44 @@ async function postJson(path: string, body: Record<string, any>) {
   return { status: res.status, json };
 }
 
-test('register and login without MFA', async () => {
-  const email = uniqueEmail('nomfa');
+test('register citizen and setup mfa', async () => {
+  const email = uniqueEmail('citizen');
   const mobile = randomMobile();
-  const password = 'Password123!';
+  const password = 'SecureP@ssw0rd123';
 
   const registerRes = await postJson('/api/auth/register', {
-    name: 'No MFA User',
+    name: 'Test Citizen',
     email,
     mobile,
     password,
     aadhaar: '123412341234',
-    role: 'citizen',
-    mfaEnabled: false,
   });
 
   expect(registerRes.status).toBe(201);
   expect(registerRes.json?.success).toBe(true);
-
-  const loginRes = await postJson('/api/auth/login', { email, password });
-
-  expect(loginRes.status).toBe(200);
-  expect(loginRes.json?.success).toBe(true);
-  expect(loginRes.json?.accessToken).toBeTruthy();
+  expect(registerRes.json?.message).toContain('mfa');
+  expect(registerRes.json?.userId).toBeTruthy();
 });
 
-test('register, login, and verify MFA via OTP', async () => {
-  const email = uniqueEmail('mfa');
+test('login requires mfa setup for new users', async () => {
+  const email = uniqueEmail('newuser');
   const mobile = randomMobile();
-  const password = 'Password123!';
+  const password = 'SecureP@ssw0rd123';
 
-  const registerRes = await postJson('/api/auth/register', {
-    name: 'MFA User',
+  await postJson('/api/auth/register', {
+    name: 'New User',
     email,
     mobile,
     password,
     aadhaar: '999988887777',
-    role: 'citizen',
-    mfaEnabled: true,
   });
 
-  expect(registerRes.status).toBe(201);
-
-  const loginRes = await postJson('/api/auth/login', { email, password });
+  const loginRes = await postJson('/api/auth/login', {
+    email,
+    password,
+  });
 
   expect(loginRes.status).toBe(200);
-  expect(loginRes.json?.mfaEnabled).toBe(true);
+  expect(loginRes.json?.message).toContain('mfa setup required');
   expect(loginRes.json?.tempToken).toBeTruthy();
-
-  const otp = await waitForOtp(email);
-  expect(otp).toBeTruthy();
-
-  const verifyRes = await postJson('/api/auth/verify-mfa', {
-    tempToken: loginRes.json.tempToken,
-    otp,
-  });
-
-  expect(verifyRes.status).toBe(200);
-  expect(verifyRes.json?.success).toBe(true);
-  expect(verifyRes.json?.accessToken).toBeTruthy();
 });

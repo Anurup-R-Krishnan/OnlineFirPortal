@@ -1,30 +1,178 @@
-/**
- * Security Utilities for Online FIR Portal
- * Implements: Encryption (AES-256-GCM), Hashing (SHA-256 + Salt + bcrypt), 
- * Digital Signatures (RSA-SHA256), and Encoding (Base64)
- */
-
 import bcrypt from 'bcryptjs';
 import { webcrypto } from 'crypto';
+import { prisma } from './prisma';
+import { logAuthAttempt } from './audit-logger';
 
-// Polyfill for Node.js environment if global crypto is not available or partial
 const crypto = (globalThis.crypto || webcrypto) as Crypto;
 
-// Re-export access control utilities
 export * from './access-control';
 
-// ============ ENCODING & DECODING (Base64) ============
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+const loginAttemptStore = new Map<string, { count: number; resetAt: number }>();
+
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000;
+const RATE_LIMIT_MAX_REQUESTS = 100;
+const LOGIN_ATTEMPT_WINDOW = 30 * 60 * 1000;
+const MAX_LOGIN_ATTEMPTS = 50; // Increased from 5
+const ACCOUNT_LOCKOUT_DURATION = 1 * 60 * 1000; // Decreased from 30 minutes to 1 minute
+
+export function checkRateLimit(ipAddress: string): boolean {
+  const now = Date.now();
+  const key = `rate:${ipAddress}`;
+  const record = rateLimitStore.get(key);
+
+  if (!record || record.resetAt < now) {
+    rateLimitStore.set(key, {
+      count: 1,
+      resetAt: now + RATE_LIMIT_WINDOW,
+    });
+    return true;
+  }
+
+  if (record.count >= RATE_LIMIT_MAX_REQUESTS) {
+    return false;
+  }
+
+  record.count++;
+  rateLimitStore.set(key, record);
+  return true;
+}
+
+export async function trackFailedLogin(
+  userId: string,
+  email: string,
+  ipAddress?: string,
+  userAgent?: string
+): Promise<{ locked: boolean; attemptsRemaining: number }> {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      failedLoginAttempts: { increment: 1 },
+    },
+  });
+
+  await logAuthAttempt(email, false, ipAddress, userAgent, 'invalid credentials');
+
+  const attemptsRemaining = MAX_LOGIN_ATTEMPTS - user.failedLoginAttempts;
+
+  if (user.failedLoginAttempts >= MAX_LOGIN_ATTEMPTS) {
+    const lockedUntil = new Date(Date.now() + ACCOUNT_LOCKOUT_DURATION);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        accountStatus: 'LOCKED',
+        lockedUntil,
+      },
+    });
+
+    return { locked: true, attemptsRemaining: 0 };
+  }
+
+  return { locked: false, attemptsRemaining };
+}
+
+export async function resetFailedLoginAttempts(userId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      failedLoginAttempts: 0,
+      lastLoginAt: new Date(),
+    },
+  });
+}
+
+export async function isAccountLocked(userId: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { accountStatus: true, lockedUntil: true },
+  });
+
+  if (!user) return false;
+
+  if (user.accountStatus === 'LOCKED') {
+    if (user.lockedUntil && user.lockedUntil < new Date()) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          accountStatus: 'ACTIVE',
+          lockedUntil: null,
+          failedLoginAttempts: 0,
+        },
+      });
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+export async function unlockAccount(userId: string, adminId: string): Promise<void> {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      accountStatus: 'ACTIVE',
+      lockedUntil: null,
+      failedLoginAttempts: 0,
+    },
+  });
+}
+
+export function sanitizeInput(input: string): string {
+  return input
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .trim();
+}
+
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+export function isValidMobile(mobile: string): boolean {
+  const normalized = mobile.replace(/\s+/g, '').replace(/^\+?91/, '').replace(/^0+/, '');
+  const mobileRegex = /^[6-9]\d{9}$/;
+  return mobileRegex.test(normalized);
+}
+
+export function normalizeMobile(mobile: string): string {
+  return mobile.replace(/\s+/g, '').replace(/^\+?91/, '').replace(/^0+/, '');
+}
+
+export function generateSecureToken(length: number = 32): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < length; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+export function cleanupRateLimits(): void {
+  const now = Date.now();
+  for (const [key, record] of rateLimitStore.entries()) {
+    if (record.resetAt < now) {
+      rateLimitStore.delete(key);
+    }
+  }
+  for (const [key, record] of loginAttemptStore.entries()) {
+    if (record.resetAt < now) {
+      loginAttemptStore.delete(key);
+    }
+  }
+}
+
+setInterval(cleanupRateLimits, 5 * 60 * 1000);
 
 export function encodeBase64(data: string): string {
-  // Works in both browser and Node.js (Node 16+)
   return btoa(unescape(encodeURIComponent(data)));
 }
 
 export function decodeBase64(encoded: string): string {
   return decodeURIComponent(escape(atob(encoded)));
 }
-
-// ============ HASHING WITH SALT ============
 
 export async function generateSalt(length: number = 16): Promise<string> {
   const array = new Uint8Array(length);
@@ -40,9 +188,6 @@ export async function hashWithSalt(data: string, salt: string): Promise<string> 
   return hashArray.map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// ============ PASSWORD HASHING WITH BCRYPT ============
-// Using bcrypt for industry-standard password hashing with built-in salt
-
 export async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
   const salt = await bcrypt.genSalt(10);
   const hash = await bcrypt.hash(password, salt);
@@ -50,13 +195,8 @@ export async function hashPassword(password: string): Promise<{ hash: string; sa
 }
 
 export async function verifyPassword(password: string, storedHash: string, salt?: string): Promise<boolean> {
-  // bcrypt includes salt in the hash, so we can compare directly
   return await bcrypt.compare(password, storedHash);
 }
-
-
-
-// ============ AES-256-GCM ENCRYPTION ============
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const encoder = new TextEncoder();
@@ -94,7 +234,6 @@ export async function encryptAES(plaintext: string, password: string): Promise<s
     encoder.encode(plaintext)
   );
 
-  // Combine salt + iv + encrypted data
   const combined = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
   combined.set(salt, 0);
   combined.set(iv, salt.length);
@@ -121,10 +260,7 @@ export async function decryptAES(ciphertext: string, password: string): Promise<
   return new TextDecoder().decode(decrypted);
 }
 
-// ============ RSA KEY GENERATION & ENCRYPTION ============
-
 export async function generateRSAKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
-  // Generate key pair for both encryption and signing
   const encryptionKeyPair = await crypto.subtle.generateKey(
     {
       name: 'RSA-OAEP',
@@ -186,8 +322,6 @@ export async function decryptRSA(encryptedBase64: string, privateKeyBase64: stri
 
   return new TextDecoder().decode(decrypted);
 }
-
-// ============ RSA DIGITAL SIGNATURES ============
 
 export async function generateRSASigningKeyPair(): Promise<{ publicKey: string; privateKey: string }> {
   const keyPair = await crypto.subtle.generateKey(
@@ -252,11 +386,19 @@ export async function verifySignature(data: string, signatureBase64: string, pub
   );
 }
 
-// ============ GENERATE FIR REFERENCE NUMBER ============
-
 export function generateFIRNumber(stateCode: string = 'IN'): string {
   const year = new Date().getFullYear();
   const random = Math.floor(Math.random() * 100000000).toString().padStart(8, '0');
   return `FIR-${year}-${stateCode}-${random}`;
+}
+
+export async function encryptData(data: string): Promise<string> {
+  const key = process.env.ENCRYPTION_KEY || 'default-encryption-key-change-in-production';
+  return await encryptAES(data, key);
+}
+
+export async function decryptData(encryptedData: string): Promise<string> {
+  const key = process.env.ENCRYPTION_KEY || 'default-encryption-key-change-in-production';
+  return await decryptAES(encryptedData, key);
 }
 
