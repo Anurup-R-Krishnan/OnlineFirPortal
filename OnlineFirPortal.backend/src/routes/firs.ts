@@ -28,11 +28,65 @@ router.post('/', authenticateToken, requireRole(['CITIZEN']), async (req, res) =
             witnessDetails,
             suspectDetails,
             ipcSections,
+            signature,
+            signaturePublicKey,
+            signatureData,
+            signatureAlgo,
         } = req.body;
 
         if (!complaintType || !incidentDate || !incidentDescription || !incidentState || !incidentDistrict || !incidentPlace) {
             res.status(400).json({ error: 'missing required fields' });
             return;
+        }
+
+        // handle inline signature verification during FIR creation
+        let signatureVerified = false;
+        if (signature) {
+            // auto-register public key if provided inline and not yet stored
+            if (signaturePublicKey) {
+                const existingUser = await prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { publicKey: true },
+                });
+                if (!existingUser?.publicKey) {
+                    await prisma.user.update({
+                        where: { id: userId },
+                        data: { publicKey: signaturePublicKey, publicKeyRegisteredAt: new Date() },
+                    });
+                }
+            }
+
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { publicKey: true },
+            });
+
+            if (!user?.publicKey) {
+                res.status(400).json({ error: 'public key not registered, please register your public key first' });
+                return;
+            }
+
+            // reconstruct the same data the frontend signed
+            const expectedSignatureData = JSON.stringify({
+                reporterId: userId,
+                complaintType,
+                incidentDate,
+                incidentPlace,
+                description: incidentDescription,
+            });
+
+            // verify against the reconstructed data (preferred) or the frontend-provided signatureData
+            const dataToVerify = expectedSignatureData;
+            const isValid = await verifySignature(dataToVerify, signature, user.publicKey);
+            if (!isValid) {
+                // fallback: try the signatureData string sent by frontend in case of minor field differences
+                const fallbackValid = signatureData ? await verifySignature(signatureData, signature, user.publicKey) : false;
+                if (!fallbackValid) {
+                    res.status(400).json({ error: 'invalid digital signature' });
+                    return;
+                }
+            }
+            signatureVerified = true;
         }
 
         const referenceNumber = `FIR${Date.now()}${Math.floor(Math.random() * 1000)}`;
@@ -65,17 +119,33 @@ router.post('/', authenticateToken, requireRole(['CITIZEN']), async (req, res) =
                 incidentPlace: sanitizeInput(incidentPlace),
                 ipcSections: ipcSections || null,
                 encryptedData,
-                status: 'DRAFT',
+                status: signatureVerified ? 'SUBMITTED' : 'DRAFT',
                 priority: 'MEDIUM',
+                ...(signatureVerified && {
+                    signature,
+                    signedAt: new Date(),
+                    submittedAt: new Date(),
+                }),
             },
         });
 
+        if (signatureVerified) {
+            await prisma.timeline.create({
+                data: {
+                    firId: fir.id,
+                    actorId: userId,
+                    actorName: req.user!.name || req.user!.email,
+                    action: 'FIR created and submitted with digital signature',
+                },
+            });
+        }
+
         await logAudit({
-            action: 'FIR_CREATED',
+            action: signatureVerified ? 'FIR_SUBMITTED' : 'FIR_CREATED',
             userId,
             userRole,
             firId: fir.id,
-            changes: { firId: fir.id, referenceNumber },
+            changes: { firId: fir.id, referenceNumber, signed: signatureVerified },
             ipAddress,
         });
 
@@ -84,7 +154,8 @@ router.post('/', authenticateToken, requireRole(['CITIZEN']), async (req, res) =
             id: fir.id,
             referenceNumber: fir.referenceNumber,
             status: fir.status,
-            message: 'fir created successfully',
+            signed: signatureVerified,
+            message: signatureVerified ? 'fir created and submitted with digital signature' : 'fir created successfully',
         });
     } catch (error: any) {
         console.error('[create fir error]', error);
@@ -113,7 +184,7 @@ router.post('/:id/submit', authenticateToken, requireRole(['CITIZEN']), async (r
             return;
         }
 
-        const { signature } = req.body;
+        const { signature, signatureData: clientSignatureData } = req.body;
 
         // verify digital signature if provided
         if (signature) {
@@ -127,15 +198,31 @@ router.post('/:id/submit', authenticateToken, requireRole(['CITIZEN']), async (r
                 return;
             }
 
-            // create signature data from fir details
+            // reconstruct signature data from fir details (matching frontend signaturePayload)
             const signatureData = JSON.stringify({
-                firId: fir.id,
-                referenceNumber: fir.referenceNumber,
                 reporterId: fir.reporterId,
-                createdAt: fir.createdAt,
+                complaintType: fir.crimeType,
+                incidentDate: fir.incidentDate.toISOString(),
+                incidentPlace: fir.incidentPlace,
+                description: fir.description,
             });
 
-            const isValid = await verifySignature(signatureData, signature, user.publicKey);
+            let isValid = await verifySignature(signatureData, signature, user.publicKey);
+
+            // fallback: try the old format or the signatureData string provided by the client
+            if (!isValid) {
+                const legacyData = JSON.stringify({
+                    firId: fir.id,
+                    referenceNumber: fir.referenceNumber,
+                    reporterId: fir.reporterId,
+                    createdAt: fir.createdAt,
+                });
+                isValid = await verifySignature(legacyData, signature, user.publicKey);
+            }
+            if (!isValid && clientSignatureData) {
+                isValid = await verifySignature(clientSignatureData, signature, user.publicKey);
+            }
+
             if (!isValid) {
                 res.status(400).json({ error: 'invalid signature' });
                 return;

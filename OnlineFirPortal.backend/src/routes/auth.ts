@@ -50,6 +50,53 @@ const getIp = (req: express.Request): string => req.ip || req.socket.remoteAddre
 const getUserAgent = (req: express.Request): string => req.headers['user-agent'] || 'unknown';
 
 // ==========================================
+// aadhaar otp storage (in-memory for development)
+// ==========================================
+const aadhaarOtpStore = new Map<string, { otp: string; expiresAt: number }>();
+const OTP_EXPIRY_MS = 60 * 1000; // 1 minute
+
+function generateNumericOTP(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function cleanupExpiredOtps(): void {
+    const now = Date.now();
+    for (const [aadhaar, data] of aadhaarOtpStore.entries()) {
+        if (data.expiresAt < now) {
+            aadhaarOtpStore.delete(aadhaar);
+        }
+    }
+}
+
+// ==========================================
+// mfa setup during registration (before user creation)
+// ==========================================
+router.post('/setup-mfa-registration', async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            res.status(400).json({ error: 'email required for mfa setup' });
+            return;
+        }
+
+        // generate totp secret and qr code
+        const totpSetup = await generateTOTPSecret(email);
+
+        res.json({
+            success: true,
+            qrCode: totpSetup.qrCode,
+            manualEntryKey: totpSetup.manualEntryKey,
+            secret: totpSetup.secret, // frontend will send this back with registration
+            message: 'scan qr code with google authenticator app',
+        });
+    } catch (error: any) {
+        console.error('[mfa registration setup error]', error);
+        res.status(500).json({ error: 'mfa setup failed' });
+    }
+});
+
+// ==========================================
 // citizen registration (public)
 // ==========================================
 router.post('/register', async (req, res) => {
@@ -63,11 +110,24 @@ router.post('/register', async (req, res) => {
             return;
         }
 
-        const { name, email, mobile, password, aadhaar } = req.body;
+        const { name, email, mobile, password, aadhaar, mfaSecret, totp } = req.body;
 
         // validation
         if (!name || !email || !mobile || !password) {
             res.status(400).json({ error: 'missing required fields' });
+            return;
+        }
+
+        // mfa is now required during registration
+        if (!mfaSecret || !totp) {
+            res.status(400).json({ error: 'mfa setup required - missing secret or totp code' });
+            return;
+        }
+
+        // verify totp before creating user
+        const isTotpValid = verifyTOTP(totp, mfaSecret);
+        if (!isTotpValid) {
+            res.status(401).json({ error: 'invalid totp code - please try again' });
             return;
         }
 
@@ -117,20 +177,40 @@ router.post('/register', async (req, res) => {
         // hash password
         const { hash, salt } = await hashPassword(password);
 
-        // create user (citizens only for public registration)
-        const user = await prisma.user.create({
-            data: {
-                name: sanitizeInput(name),
-                email: normalizedEmail,
-                mobile: normalizedMobile,
-                aadhaar: aadhaar ? sanitizeInput(aadhaar) : null,
-                role: 'CITIZEN',
-                passwordHash: hash,
-                passwordSalt: salt,
-                mfaEnabled: false,
-                forceMfaSetup: true, // force mfa setup on first login
-                accountStatus: 'ACTIVE',
-            },
+        // generate recovery codes
+        const recoveryCodes = generateRecoveryCodes();
+        const hashedCodes = recoveryCodes.map(code => ({
+            codeHash: createHash('sha256').update(code).digest('hex'),
+        }));
+
+        // create user with mfa enabled (citizens only for public registration)
+        const user = await prisma.$transaction(async (tx) => {
+            const newUser = await tx.user.create({
+                data: {
+                    name: sanitizeInput(name),
+                    email: normalizedEmail,
+                    mobile: normalizedMobile,
+                    aadhaar: aadhaar ? sanitizeInput(aadhaar) : null,
+                    role: 'CITIZEN',
+                    passwordHash: hash,
+                    passwordSalt: salt,
+                    mfaEnabled: true,
+                    mfaSecret: mfaSecret,
+                    mfaSetupAt: new Date(),
+                    forceMfaSetup: false,
+                    accountStatus: 'ACTIVE',
+                },
+            });
+
+            // create recovery codes
+            await tx.mFARecoveryCode.createMany({
+                data: hashedCodes.map(code => ({
+                    ...code,
+                    userId: newUser.id,
+                })),
+            });
+
+            return newUser;
         });
 
         // log registration
@@ -141,16 +221,110 @@ router.post('/register', async (req, res) => {
             action: 'REGISTER',
             ipAddress,
             userAgent,
+            changes: { mfaEnabled: true },
         });
 
         res.status(201).json({
             success: true,
-            message: 'registration successful, please setup mfa on first login',
+            message: 'registration successful with mfa enabled',
             userId: user.id,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                mobile: user.mobile,
+                role: user.role,
+            },
+            recoveryCodes, // return recovery codes to user
         });
     } catch (error: any) {
         console.error('[registration error]', error);
         res.status(500).json({ error: 'registration failed' });
+    }
+});
+
+// ==========================================
+// aadhaar verification routes (step 1 of registration)
+// ==========================================
+router.post('/aadhaar/request', async (req, res) => {
+    try {
+        const { aadhaar } = req.body;
+
+        if (!aadhaar || !/^\d{12}$/.test(aadhaar.replace(/\s/g, ''))) {
+            res.status(400).json({ error: 'invalid aadhaar number format' });
+            return;
+        }
+
+        // in production: call uidai/asa api to trigger otp to linked mobile
+        // const response = await uidai.sendOtp(aadhaar);
+
+        // generate random otp and store it
+        cleanupExpiredOtps();
+        const otp = generateNumericOTP();
+        const expiresAt = Date.now() + OTP_EXPIRY_MS;
+        aadhaarOtpStore.set(aadhaar, { otp, expiresAt });
+
+        // log to terminal
+        console.log('\n=================================================');
+        console.log(`[AADHAAR OTP] For ${aadhaar}: ${otp}`);
+        console.log(`[AADHAAR OTP] Expires at: ${new Date(expiresAt).toLocaleTimeString()}`);
+        console.log('=================================================\n');
+
+        res.json({
+            success: true,
+            message: 'verification code sent to linked mobile number'
+        });
+
+    } catch (error) {
+        console.error('[aadhaar request error]', error);
+        res.status(500).json({ error: 'failed to send verification code' });
+    }
+});
+
+router.post('/aadhaar/verify', async (req, res) => {
+    try {
+        const { aadhaar, otp } = req.body;
+
+        if (!aadhaar || !otp) {
+            res.status(400).json({ error: 'aadhaar and otp required' });
+            return;
+        }
+
+        // in production: verify otp with uidai
+        // const verified = await uidai.verifyOtp(aadhaar, otp);
+
+        // verify against stored otp
+        cleanupExpiredOtps();
+        const storedData = aadhaarOtpStore.get(aadhaar);
+
+        if (!storedData) {
+            res.status(400).json({ error: 'otp expired or not requested' });
+            return;
+        }
+
+        if (Date.now() > storedData.expiresAt) {
+            aadhaarOtpStore.delete(aadhaar);
+            res.status(400).json({ error: 'otp has expired' });
+            return;
+        }
+
+        if (otp !== storedData.otp) {
+            res.status(400).json({ error: 'invalid otp' });
+            return;
+        }
+
+        // clear otp after successful verification
+        aadhaarOtpStore.delete(aadhaar);
+
+        res.json({
+            success: true,
+            message: 'aadhaar verified successfully',
+            verified: true
+        });
+
+    } catch (error) {
+        console.error('[aadhaar verify error]', error);
+        res.status(500).json({ error: 'verification failed' });
     }
 });
 
@@ -920,6 +1094,46 @@ router.post('/refresh', async (req, res) => {
     } catch (error: any) {
         console.error('[refresh error]', error);
         res.status(500).json({ error: 'token refresh failed' });
+    }
+});
+
+// ==========================================
+// register public key (alias for /keys endpoint)
+// ==========================================
+router.post('/keys', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const { publicKey, label } = req.body;
+
+        if (!publicKey || typeof publicKey !== 'string') {
+            res.status(400).json({ error: 'public key required' });
+            return;
+        }
+
+        // basic validation - should be base64 encoded
+        if (!/^[A-Za-z0-9+/=]+$/.test(publicKey)) {
+            res.status(400).json({ error: 'invalid public key format' });
+            return;
+        }
+
+        // For now, store as the user's primary public key
+        // In production, this would store multiple keys in a separate table
+        await prisma.user.update({
+            where: { id: userId },
+            data: {
+                publicKey,
+                publicKeyRegisteredAt: new Date(),
+            },
+        });
+
+        res.json({
+            success: true,
+            message: 'public key registered',
+            label: label || 'default',
+        });
+    } catch (error: any) {
+        console.error('[register key error]', error);
+        res.status(500).json({ error: 'failed to register key' });
     }
 });
 

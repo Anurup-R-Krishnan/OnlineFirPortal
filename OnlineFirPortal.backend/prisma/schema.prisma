@@ -94,6 +94,46 @@ enum AuditAction {
   DELETE_USER
   VIEW_AUDIT_LOG
   SYSTEM_SETTING_CHANGE
+  EVIDENCE_CREATED
+  EVIDENCE_UPDATED
+  EVIDENCE_DELETED
+  EVIDENCE_TRANSFER
+  CRIMINAL_CREATED
+  CRIMINAL_UPDATED
+  CRIMINAL_DELETED
+  CRIMINAL_LINKED
+  ROSTER_UPDATE
+}
+
+// evidence status enum
+enum EvidenceStatus {
+  COLLECTED
+  IN_CUSTODY
+  IN_TRANSIT
+  IN_LAB
+  IN_COURT
+  DISPOSED
+  RETURNED
+}
+
+// duty status enum
+enum DutyStatus {
+  ON_DUTY
+  OFF_DUTY
+  ON_LEAVE
+  SICK_LEAVE
+  TRAINING
+  COURT_DUTY
+  PATROL
+  BREAK
+}
+
+// shift type enum
+enum ShiftType {
+  MORNING
+  EVENING
+  NIGHT
+  GENERAL
 }
 
 // user model - comprehensive user management
@@ -150,6 +190,10 @@ model User {
   notifications       Notification[]
   sessions            Session[]
   timelineEntries     Timeline[]
+  handledEvidence     ChainOfCustody[]     @relation("EvidenceHandler")
+  transferredEvidence ChainOfCustody[]     @relation("EvidenceReceiver")
+  shifts              DutyShift[]
+
 
   @@index([email])
   @@index([mobile])
@@ -207,6 +251,9 @@ model FIR {
   documents Document[]
   timeline  Timeline[]
   auditLogs AuditLog[]
+  evidence  Evidence[]
+  criminals CriminalFir[]
+
 
   @@index([reporterId])
   @@index([assignedOfficerId])
@@ -413,4 +460,141 @@ model SystemSetting {
   value     String // json value
   updatedAt DateTime @updatedAt
   updatedBy String?
+}
+
+// evidence model
+model Evidence {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // evidence details
+  type        String // e.g., "Weapon", "Document", "Digital", "Biological"
+  description String
+  quantity    String? // e.g., "1 unit", "500g"
+  
+  // storage
+  storageLocation String // e.g., "Locker A1", "Server Room"
+  status          EvidenceStatus @default(COLLECTED)
+
+  // relations
+  firId String
+  fir   FIR    @relation(fields: [firId], references: [id])
+  
+  chainOfCustody ChainOfCustody[]
+  
+  @@index([firId])
+  @@index([status])
+}
+
+// chain of custody model
+model ChainOfCustody {
+  id        String   @id @default(uuid())
+  timestamp DateTime @default(now())
+
+  // evidence
+  evidenceId String
+  evidence   Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  // involved parties
+  handlerId String // who is handing it over / currently has it
+  handler   User   @relation("EvidenceHandler", fields: [handlerId], references: [id])
+  
+  receiverId String? // who is receiving it (optional for initial collection)
+  receiver   User?   @relation("EvidenceReceiver", fields: [receiverId], references: [id])
+
+  // action details
+  action   String // e.g., "COLLECTED", "TRANSFERRED", "STORED", "SUBMITTED_TO_LAB"
+  purpose  String? // reason for transfer
+  location String? // location where action took place
+
+  @@index([evidenceId])
+  @@index([handlerId])
+  @@index([timestamp])
+}
+
+// criminal profile model
+model Criminal {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // personal info
+  name        String
+  aliases     String? // comma separated
+  dateOfBirth DateTime?
+  gender      String?
+  nationality String?
+  
+  // physical description
+  height       String?
+  weight       String?
+  complexion   String?
+  eyeColor     String?
+  hairColor    String?
+  identifyingMarks String? // scars, tattoos
+
+  // contact
+  address     String?
+  mobile      String?
+  
+  // status
+  status      String @default("ACTIVE") // ACTIVE, WANTED, IN_CUSTODY, DECEASED, RELEASED
+
+  // media
+  mugshotUrl  String? // url to document
+  
+  // relations
+  firs        CriminalFir[]
+
+  @@index([name])
+  @@index([mobile])
+}
+
+// relation table for criminal <-> fir (many-to-many with details)
+model CriminalFir {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  criminalId String
+  criminal   Criminal @relation(fields: [criminalId], references: [id], onDelete: Cascade)
+
+  firId String
+  fir   FIR    @relation(fields: [firId], references: [id], onDelete: Cascade)
+
+  // involvement details
+  involvementType String // SUSPECT, ACCUSED, CONVICTED, ACQUITTED
+  description     String? // specific role in crime
+  status          String? // arrest status for this case
+
+  @@unique([criminalId, firId])
+  @@index([criminalId])
+  @@index([firId])
+}
+
+// duty shift model
+model DutyShift {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // officer
+  officerId String
+  officer   User   @relation(fields: [officerId], references: [id])
+  
+  // shift details
+  startTime DateTime
+  endTime   DateTime?
+  type      ShiftType
+  
+  // status
+  status    DutyStatus @default(ON_DUTY)
+  
+  // report
+  activities String? // brief report of shift activities
+  location   String? // assigned area/vehicle
+
+  @@index([officerId])
+  @@index([startTime])
+  @@index([status])
 }

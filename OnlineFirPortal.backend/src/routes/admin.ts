@@ -410,6 +410,202 @@ router.get('/audit-logs', authenticateToken, requireRole(['ADMIN', 'SUPER_ADMIN'
 });
 
 // ==========================================
+// get all documents
+// ==========================================
+router.get('/documents', authenticateToken, requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const { page = '1', limit = '50' } = req.query;
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    const [documents, total] = await Promise.all([
+      prisma.document.findMany({
+        select: {
+          id: true,
+          filename: true,
+          mimetype: true,
+          size: true,
+          documentType: true,
+          verified: true,
+          createdAt: true,
+          firId: true,
+          uploadedById: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit as string),
+      }),
+      prisma.document.count(),
+    ]);
+
+    res.json({
+      documents,
+      total,
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      pages: Math.ceil(total / parseInt(limit as string)),
+    });
+  } catch (error: any) {
+    console.error('[list documents error]', error);
+    res.status(500).json({ error: 'failed to list documents' });
+  }
+});
+
+// ==========================================
+// get all firs
+// ==========================================
+router.get('/firs', authenticateToken, requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const { status, page = '1', limit = '50' } = req.query;
+    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+
+    const where: any = {};
+    if (status) where.status = status;
+
+    const [firs, total] = await Promise.all([
+      prisma.fIR.findMany({
+        where,
+        select: {
+          id: true,
+          referenceNumber: true,
+          title: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+          reporterId: true,
+          assignedOfficerId: true,
+          assignedStation: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit as string),
+      }),
+      prisma.fIR.count({ where }),
+    ]);
+
+    res.json({
+      firs,
+      total,
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      pages: Math.ceil(total / parseInt(limit as string)),
+    });
+  } catch (error: any) {
+    console.error('[list firs error]', error);
+    res.status(500).json({ error: 'failed to list firs' });
+  }
+});
+
+// ==========================================
+// get reports summary
+// ==========================================
+router.get('/reports/summary', authenticateToken, requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const [
+      totalUsers,
+      totalFirs,
+      totalDocuments,
+      pendingResets,
+      recentAuditLogs
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.fIR.count(),
+      prisma.document.count(),
+      prisma.passwordResetToken.count({
+        where: { used: false, adminApproved: false }
+      }),
+      prisma.auditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: {
+          id: true,
+          action: true,
+          userName: true,
+          createdAt: true,
+          success: true,
+        }
+      })
+    ]);
+
+    const firStats = await prisma.fIR.groupBy({
+      by: ['status'],
+      _count: { id: true }
+    });
+
+    const statusCounts: Record<string, number> = {};
+    firStats.forEach(stat => {
+      statusCounts[stat.status] = stat._count.id;
+    });
+
+    res.json({
+      totalUsers,
+      totalFirs,
+      totalDocuments,
+      pendingResets,
+      recentAuditLogs,
+      firStatusCounts: statusCounts,
+    });
+  } catch (error: any) {
+    console.error('[get reports summary error]', error);
+    res.status(500).json({ error: 'failed to get reports summary' });
+  }
+});
+
+// ==========================================
+// get system settings
+// ==========================================
+router.get('/settings', authenticateToken, requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+  try {
+    const settings = await prisma.systemSetting.findMany();
+    const settingsObj: Record<string, string> = {};
+    settings.forEach(s => {
+      settingsObj[s.key] = s.value;
+    });
+
+    res.json(settingsObj);
+  } catch (error: any) {
+    console.error('[get settings error]', error);
+    res.status(500).json({ error: 'failed to get settings' });
+  }
+});
+
+// ==========================================
+// update system settings
+// ==========================================
+router.post('/settings', authenticateToken, requireRole(['SUPER_ADMIN']), async (req, res) => {
+  try {
+    const adminId = req.user!.userId;
+    const updates = req.body;
+
+    if (typeof updates !== 'object') {
+      res.status(400).json({ error: 'invalid settings format' });
+      return;
+    }
+
+    for (const [key, value] of Object.entries(updates)) {
+      await prisma.systemSetting.upsert({
+        where: { key },
+        update: {
+          value: String(value),
+          updatedAt: new Date(),
+          updatedBy: adminId,
+        },
+        create: {
+          key,
+          value: String(value),
+          updatedAt: new Date(),
+          updatedBy: adminId,
+        },
+      });
+    }
+
+    res.json({ success: true, message: 'settings updated' });
+  } catch (error: any) {
+    console.error('[update settings error]', error);
+    res.status(500).json({ error: 'failed to update settings' });
+  }
+});
+
+// ==========================================
 // export audit logs
 // ==========================================
 router.get('/audit-logs/export', authenticateToken, requireRole(['ADMIN', 'SUPER_ADMIN']), async (req, res) => {

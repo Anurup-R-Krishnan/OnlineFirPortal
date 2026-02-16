@@ -13,8 +13,8 @@ const loginAttemptStore = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW = 15 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 100;
 const LOGIN_ATTEMPT_WINDOW = 30 * 60 * 1000;
-const MAX_LOGIN_ATTEMPTS = 50; // Increased from 5
-const ACCOUNT_LOCKOUT_DURATION = 1 * 60 * 1000; // Decreased from 30 minutes to 1 minute
+const MAX_LOGIN_ATTEMPTS = 5;
+const ACCOUNT_LOCKOUT_DURATION = 30 * 60 * 1000;
 
 export function checkRateLimit(ipAddress: string): boolean {
   const now = Date.now();
@@ -143,11 +143,9 @@ export function normalizeMobile(mobile: string): string {
 
 export function generateSecureToken(length: number = 32): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let token = '';
-  for (let i = 0; i < length; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return token;
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, byte => chars[byte % chars.length]).join('');
 }
 
 export function cleanupRateLimits(): void {
@@ -164,7 +162,8 @@ export function cleanupRateLimits(): void {
   }
 }
 
-setInterval(cleanupRateLimits, 5 * 60 * 1000);
+const cleanupInterval = setInterval(cleanupRateLimits, 5 * 60 * 1000);
+cleanupInterval.unref();
 
 export function encodeBase64(data: string): string {
   return btoa(unescape(encodeURIComponent(data)));
@@ -392,13 +391,29 @@ export function generateFIRNumber(stateCode: string = 'IN'): string {
   return `FIR-${year}-${stateCode}-${random}`;
 }
 
+let warnedDefaultEncKey = false;
+function ensureEncryptionKey(): string {
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('ENCRYPTION_KEY is required in production environment');
+    }
+    if (!warnedDefaultEncKey) {
+      console.warn('[security] Using default ENCRYPTION_KEY. Set ENCRYPTION_KEY in .env for better security.');
+      warnedDefaultEncKey = true;
+    }
+    return 'default-encryption-key-change-in-production';
+  }
+  return key;
+}
+
 export async function encryptData(data: string): Promise<string> {
-  const key = process.env.ENCRYPTION_KEY || 'default-encryption-key-change-in-production';
+  const key = ensureEncryptionKey();
   return await encryptAES(data, key);
 }
 
 export async function decryptData(encryptedData: string): Promise<string> {
-  const key = process.env.ENCRYPTION_KEY || 'default-encryption-key-change-in-production';
+  const key = ensureEncryptionKey();
   return await decryptAES(encryptedData, key);
 }
 

@@ -5,11 +5,20 @@
 
 import jwt from 'jsonwebtoken';
 
-// Helper to generate random hex string using Web Crypto API
+// Helper to generate random hex string using Web Crypto API (fallback to Node crypto.randomBytes)
 function randomHex(bytes: number): string {
-  const arr = new Uint8Array(bytes);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+  try {
+    const cryptoObj: any = (globalThis as any).crypto;
+    if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
+      const arr = new Uint8Array(bytes);
+      cryptoObj.getRandomValues(arr);
+      return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (e) {
+    // fall through to Node fallback
+  }
+  // Fallback to Node's crypto
+  return require('crypto').randomBytes(bytes).toString('hex');
 }
 
 // In production, use environment variables
