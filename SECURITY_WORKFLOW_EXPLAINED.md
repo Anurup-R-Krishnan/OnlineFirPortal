@@ -2071,3 +2071,725 @@ This comprehensive security flow ensures that user data is protected at every st
 - **Training**: Ongoing security awareness training
 
 This comprehensive security implementation follows industry best practices and defense-in-depth principles, ensuring that even if one security layer is compromised, multiple additional layers continue to protect the sensitive data. The system is designed to be both highly secure and maintainable, with clear documentation and regular security assessments to ensure continued protection against evolving threats.
+
+---
+
+## 11. SECURITY LEVELS & RISKS (THEORY)
+
+### 11.1 CIA Triad - Foundation of Information Security
+
+The **CIA Triad** represents the three core principles of information security that the Online FIR Portal implements:
+
+#### **Confidentiality**
+**Definition**: Ensuring that sensitive information is accessible only to authorized individuals.
+
+**Implementation in FIR Portal**:
+- **Encryption at Rest**: AES-256-GCM encryption for all FIR data and documents
+- **Encryption in Transit**: HTTPS/TLS for all communications
+- **Access Control**: RBAC ensures users only see their authorized data
+- **Session Management**: Secure JWT tokens with short expiration times
+
+**Risk if Compromised**:
+- Unauthorized access to citizen's personal information
+- Exposure of sensitive crime details
+- Privacy violations and legal consequences
+- **Risk Level**: CRITICAL
+
+#### **Integrity**
+**Definition**: Maintaining the accuracy and consistency of data throughout its lifecycle.
+
+**Implementation in FIR Portal**:
+- **Digital Signatures**: RSA-PSS signatures ensure FIR data hasn't been tampered with
+- **Hashing**: SHA-256 for verifying data integrity
+- **Audit Logging**: Complete trail of all data modifications
+- **Database Constraints**: Foreign keys and unique constraints prevent data corruption
+
+**Risk if Compromised**:
+- Tampered evidence in criminal investigations
+- Modified FIR details affecting legal proceedings
+- Data corruption leading to wrong decisions
+- **Risk Level**: HIGH
+
+#### **Availability**
+**Definition**: Ensuring systems and data are accessible when needed by authorized users.
+
+**Implementation in FIR Portal**:
+- **Rate Limiting**: Prevents DoS attacks while maintaining service availability
+- **Session Management**: Automatic cleanup prevents resource exhaustion
+- **Error Handling**: Graceful degradation during failures
+- **Database Optimization**: Indexed queries for fast data retrieval
+
+**Risk if Compromised**:
+- System downtime during emergencies
+- Inability to file urgent FIRs
+- Delayed access to critical crime data
+- **Risk Level**: HIGH
+
+### 11.2 Security Risk Assessment
+
+#### **Risk Matrix for FIR Portal**
+
+| Threat | Likelihood | Impact | Risk Level | Mitigation |
+|--------|-----------|---------|------------|------------|
+| **Data Breach** | Medium | Critical | HIGH | Encryption, Access Control, MFA |
+| **Unauthorized Access** | Medium | High | MEDIUM | RBAC, Authentication, Session Mgmt |
+| **Data Tampering** | Low | Critical | MEDIUM | Digital Signatures, Audit Logs |
+| **DoS Attack** | Medium | High | MEDIUM | Rate Limiting, Resource Controls |
+| **Session Hijacking** | Low | High | LOW | HTTP-only Cookies, Short Sessions |
+| **Insider Threat** | Low | Critical | MEDIUM | Audit Logging, Principle of Least Privilege |
+| **Password Attacks** | High | Medium | MEDIUM | bcrypt, Account Lockout, MFA |
+| **SQL Injection** | Low | Critical | LOW | Parameterized Queries, ORM |
+
+#### **Risk Calculation Formula**:
+```
+Risk Score = Likelihood (1-5) × Impact (1-5)
+Risk Levels:
+- 1-5: LOW (Acceptable risk)
+- 6-15: MEDIUM (Mitigation required)
+- 16-25: HIGH (Immediate action required)
+```
+
+### 11.3 Security Assurance Levels
+
+Based on NIST SP 800-63-2, the FIR Portal achieves:
+
+#### **IAL2 (Identity Assurance Level 2)**
+- **Evidence**: Aadhaar number verification during registration
+- **Verification**: Identity proofing through government-issued ID
+- **Binding**: Strong binding between identity and credentials
+
+#### **AAL2 (Authenticator Assurance Level 2)**
+- **Factors**: Two-factor authentication (password + TOTP)
+- **Verifier**: Cryptographic proof of key possession
+- **Resistance**: Protection against verifier impersonation and replay attacks
+
+#### **FAL2 (Federation Assurance Level 2)**
+- **Tokens**: Signed JWT tokens with short expiration
+- **Binding**: Session binding to IP and User-Agent
+- **Revocation**: Ability to revoke sessions immediately
+
+---
+
+## 12. POSSIBLE ATTACKS & COUNTERMEASURES (THEORY)
+
+### 12.1 Brute Force Attacks
+
+#### **Attack Description**:
+An attacker systematically attempts all possible password combinations to gain unauthorized access.
+
+#### **Attack Vector**:
+```
+Attacker → Automated Tool → Login Endpoint → Try Passwords
+                                    ↓
+                              Check Response
+                                    ↓
+                              Success/Fail
+```
+
+#### **Types**:
+1. **Dictionary Attack**: Uses common passwords and dictionary words
+2. **Credential Stuffing**: Uses leaked credentials from other breaches
+3. **Pure Brute Force**: Tries all possible character combinations
+
+#### **Countermeasures Implemented**:
+
+**1. bcrypt Hashing with Salt**:
+```typescript
+// Cost factor 10 = ~100ms per hash computation
+const salt = await bcrypt.genSalt(10);
+const hash = await bcrypt.hash(password, salt);
+```
+- Makes each password attempt computationally expensive
+- Salt prevents rainbow table attacks
+- 100ms × millions of attempts = years to crack
+
+**2. Account Lockout**:
+```typescript
+// After 5 failed attempts
+if (failedAttempts >= 5) {
+  lockAccountFor(30 minutes);
+  alertSecurityTeam();
+}
+```
+- Prevents automated guessing
+- Progressive delays between attempts
+- IP-based tracking prevents distributed attacks
+
+**3. Rate Limiting**:
+```typescript
+// Maximum 100 requests per 15 minutes per IP
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100 // limit each IP to 100 requests
+});
+```
+
+**4. Multi-Factor Authentication**:
+- Even if password is cracked, TOTP/OTP required
+- Time-based codes change every 30 seconds
+- 6-digit codes = 1,000,000 combinations
+
+#### **Risk Assessment**: MEDIUM
+**Justification**: Password attacks are common but mitigated by multiple layers.
+
+---
+
+### 12.2 Man-in-the-Middle (MITM) Attacks
+
+#### **Attack Description**:
+An attacker intercepts and potentially alters communication between two parties without their knowledge.
+
+#### **Attack Vector**:
+```
+User → [Attacker Intercepts] → Server
+         ↓
+    Read/Modify Data
+         ↓
+User ← [Attacker Modifies] ← Server
+```
+
+#### **Attack Scenarios**:
+1. **Eavesdropping**: Capturing login credentials
+2. **Session Hijacking**: Stealing session tokens
+3. **SSL Stripping**: Downgrading HTTPS to HTTP
+4. **DNS Spoofing**: Redirecting to malicious site
+
+#### **Countermeasures Implemented**:
+
+**1. HTTPS/TLS Encryption**:
+```typescript
+// All communications encrypted with TLS 1.2+
+// Certificate pinning prevents fake certificates
+```
+- Encrypts all data in transit
+- Prevents packet sniffing
+- Certificate validation ensures server authenticity
+
+**2. Secure Cookies**:
+```typescript
+res.cookie('refreshToken', token, {
+  httpOnly: true,      // Prevents JavaScript access
+  secure: true,        // HTTPS only
+  sameSite: 'strict',  // CSRF protection
+  maxAge: 7 * 24 * 60 * 60 * 1000
+});
+```
+
+**3. HSTS (HTTP Strict Transport Security)**:
+- Forces browsers to use HTTPS
+- Prevents SSL stripping attacks
+- Includes subdomains
+
+**4. Public Key Pinning**:
+- Validates server certificate against known good pins
+- Prevents use of fraudulent certificates
+
+#### **Risk Assessment**: LOW
+**Justification**: HTTPS and secure cookies provide strong MITM protection.
+
+---
+
+### 12.3 SQL Injection Attacks
+
+#### **Attack Description**:
+An attacker inserts malicious SQL code into input fields to manipulate database queries.
+
+#### **Attack Vector**:
+```sql
+-- Normal Query
+SELECT * FROM users WHERE email = 'user@example.com';
+
+-- Malicious Input
+user@example.com' OR '1'='1
+
+-- Resulting Query (BEFORE protection)
+SELECT * FROM users WHERE email = 'user@example.com' OR '1'='1';
+-- Returns ALL users!
+```
+
+#### **Attack Types**:
+1. **In-band SQLi**: Classic error-based or union-based
+2. **Blind SQLi**: Boolean-based or time-based
+3. **Out-of-band SQLi**: DNS/HTTP exfiltration
+
+#### **Countermeasures Implemented**:
+
+**1. Parameterized Queries (Prisma ORM)**:
+```typescript
+// Safe - Prisma uses parameterized queries automatically
+const user = await prisma.user.findUnique({
+  where: { email: userInput } // Automatically escaped
+});
+
+// Unsafe (NEVER DO THIS)
+const user = await prisma.$queryRaw(
+  `SELECT * FROM users WHERE email = '${userInput}'`
+);
+```
+
+**2. Input Validation**:
+```typescript
+const emailSchema = z.string().email();
+const validEmail = emailSchema.parse(userInput);
+```
+
+**3. Principle of Least Privilege**:
+- Database user has minimal required permissions
+- No DROP/CREATE permissions for application user
+- Read-only access where possible
+
+**4. Error Handling**:
+```typescript
+// Generic error messages - no database details leaked
+res.status(400).json({ error: 'Invalid input' });
+
+// NOT: res.status(400).json({ error: 'Table users does not exist' });
+```
+
+#### **Risk Assessment**: LOW
+**Justification**: ORM usage and parameterized queries eliminate SQL injection risk.
+
+---
+
+### 12.4 Cross-Site Scripting (XSS) Attacks
+
+#### **Attack Description**:
+An attacker injects malicious JavaScript code that executes in victims' browsers.
+
+#### **Attack Vector**:
+```html
+<!-- User Input -->
+<script>alert('XSS')</script>
+
+<!-- Stored in Database -->
+
+<!-- Displayed to Other Users -->
+<div class="comment">
+  <script>alert('XSS')</script>
+</div>
+
+<!-- Script Executes in Victim's Browser! -->
+```
+
+#### **Attack Types**:
+1. **Stored XSS**: Malicious script stored in database
+2. **Reflected XSS**: Script in URL parameters
+3. **DOM-based XSS**: Client-side script manipulation
+
+#### **Countermeasures Implemented**:
+
+**1. Input Sanitization**:
+```typescript
+export function sanitizeInput(input: string): string {
+  return input
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '');
+}
+```
+
+**2. Content Security Policy (CSP)**:
+```http
+Content-Security-Policy: 
+  default-src 'self';
+  script-src 'self' 'nonce-{random}';
+  style-src 'self' 'unsafe-inline';
+```
+
+**3. Helmet.js Security Headers**:
+```typescript
+app.use(helmet()); // Sets multiple security headers
+```
+- X-XSS-Protection: 1; mode=block
+- Content-Security-Policy
+- X-Content-Type-Options: nosniff
+
+**4. HTTP-only Cookies**:
+- Session tokens inaccessible to JavaScript
+- Prevents token theft via XSS
+
+**5. Output Encoding**:
+```typescript
+// React automatically escapes output
+<div>{userInput}</div> // Safe - HTML entities encoded
+```
+
+#### **Risk Assessment**: LOW
+**Justification**: Multiple XSS prevention layers including CSP and output encoding.
+
+---
+
+### 12.5 Cross-Site Request Forgery (CSRF) Attacks
+
+#### **Attack Description**:
+An attacker tricks authenticated users into performing unwanted actions on a web application.
+
+#### **Attack Vector**:
+```html
+<!-- Attacker's Malicious Website -->
+<img src="https://fir-portal.com/api/fir/delete?id=123" 
+     width="0" height="0">
+
+<!-- If user is logged in, FIR #123 gets deleted! -->
+```
+
+#### **Attack Scenarios**:
+1. Changing user email/password
+2. Transferring funds
+3. Modifying FIR data
+4. Administrative actions
+
+#### **Countermeasures Implemented**:
+
+**1. SameSite Cookies**:
+```typescript
+res.cookie('session', token, {
+  sameSite: 'strict' // Cookie not sent in cross-site requests
+});
+```
+
+**2. CSRF Tokens**:
+```typescript
+// For state-changing operations
+const csrfToken = generateSecureToken();
+req.session.csrfToken = csrfToken;
+
+// Validate on POST/PUT/DELETE
+if (req.body._csrf !== req.session.csrfToken) {
+  return res.status(403).json({ error: 'Invalid CSRF token' });
+}
+```
+
+**3. Custom Headers**:
+```typescript
+// AJAX requests include custom header
+fetch('/api/fir', {
+  headers: {
+    'X-Requested-With': 'XMLHttpRequest'
+  }
+});
+```
+- Simple cross-origin requests cannot set custom headers
+- Validates request origin
+
+**4. Origin/Referrer Validation**:
+```typescript
+const allowedOrigins = ['https://fir-portal.com'];
+if (!allowedOrigins.includes(req.headers.origin)) {
+  return res.status(403).json({ error: 'Invalid origin' });
+}
+```
+
+#### **Risk Assessment**: LOW
+**Justification**: SameSite cookies provide strong CSRF protection.
+
+---
+
+### 12.6 Session Hijacking Attacks
+
+#### **Attack Description**:
+An attacker steals session tokens to impersonate authenticated users.
+
+#### **Attack Vector**:
+```
+Methods to Steal Sessions:
+1. Packet sniffing (unencrypted traffic)
+2. XSS exploitation
+3. Malware on client device
+4. Session fixation
+5. Predictable session IDs
+```
+
+#### **Attack Types**:
+1. **Session Sniffing**: Capturing tokens from network traffic
+2. **Session Fixation**: Forcing user to use known session ID
+3. **Session Sidejacking**: Stealing session cookies
+
+#### **Countermeasures Implemented**:
+
+**1. Short-Lived Sessions**:
+```typescript
+// Access token: 15 minutes
+const accessToken = jwt.sign(payload, secret, { expiresIn: '15m' });
+
+// Refresh token: 7 days with rotation
+const refreshToken = generateSecureToken();
+```
+
+**2. Session Binding**:
+```typescript
+// Bind session to IP and User-Agent
+const sessionHash = hash(req.ip + req.headers['user-agent']);
+if (sessionHash !== storedSessionHash) {
+  invalidateSession();
+  requireReauthentication();
+}
+```
+
+**3. HTTP-only Cookies**:
+```typescript
+res.cookie('refreshToken', token, {
+  httpOnly: true, // Cannot be accessed by JavaScript
+  secure: true    // HTTPS only
+});
+```
+
+**4. Token Rotation**:
+```typescript
+// New refresh token issued on each use
+const newRefreshToken = rotateToken(oldRefreshToken);
+// Old token immediately invalidated
+```
+
+**5. Concurrent Session Limits**:
+```typescript
+// Maximum 3 active sessions per user
+if (user.activeSessions.length >= 3) {
+  invalidateOldestSession();
+}
+```
+
+**6. Automatic Timeout**:
+```typescript
+// Idle timeout: 30 minutes
+// Absolute timeout: 8 hours
+setTimeout(() => invalidateSession(), 30 * 60 * 1000);
+```
+
+#### **Risk Assessment**: LOW
+**Justification**: Multiple session security controls including binding and rotation.
+
+---
+
+### 12.7 Replay Attacks
+
+#### **Attack Description**:
+An attacker intercepts valid data transmissions and retransmits them to gain unauthorized access.
+
+#### **Attack Vector**:
+```
+1. Attacker captures valid request: POST /api/transfer { amount: 100 }
+2. Attacker re-sends same request multiple times
+3. Each request is valid and processed
+4. Result: Multiple unauthorized transfers
+```
+
+#### **Countermeasures Implemented**:
+
+**1. Nonce (Number Once)**:
+```typescript
+// Include timestamp and unique ID in each request
+const nonce = {
+  timestamp: Date.now(),
+  uuid: crypto.randomUUID()
+};
+```
+
+**2. Request Signatures**:
+```typescript
+// Digital signature includes timestamp
+const signature = sign(data + timestamp, privateKey);
+// Old signatures rejected
+```
+
+**3. Time-based OTP (TOTP)**:
+```typescript
+// TOTP changes every 30 seconds
+// Cannot replay old OTP
+const isValid = verifyTOTP(token, secret, { window: 1 });
+```
+
+**4. One-Time Tokens**:
+```typescript
+// Refresh tokens single-use
+// Once used, token is invalidated
+```
+
+#### **Risk Assessment**: LOW
+**Justification**: Time-based tokens and single-use refresh tokens prevent replays.
+
+---
+
+### 12.8 Insider Threats
+
+#### **Attack Description**:
+Malicious actions by authorized users (employees, admins) with legitimate access.
+
+#### **Attack Vector**:
+```
+Privileged User → Abuses Access → Data Theft/Modification
+       ↓
+Difficult to Detect (Has Legitimate Credentials)
+```
+
+#### **Attack Scenarios**:
+1. Admin accessing citizen data without authorization
+2. Police officer modifying FIR details
+3. Database administrator extracting sensitive data
+4. Developer adding backdoors
+
+#### **Countermeasures Implemented**:
+
+**1. Comprehensive Audit Logging**:
+```typescript
+// Every action logged with details
+await logAuditEvent({
+  userId: user.id,
+  action: 'FIR_ACCESS',
+  resourceId: firId,
+  timestamp: new Date(),
+  ipAddress: req.ip,
+  success: true,
+  changes: { before: oldData, after: newData }
+});
+```
+
+**2. Principle of Least Privilege**:
+- Minimum permissions required for each role
+- Regular access reviews
+- Automatic deprovisioning
+
+**3. Separation of Duties**:
+- Different admins for different functions
+- Dual authorization for sensitive operations
+- No single person has complete control
+
+**4. Anomaly Detection**:
+```typescript
+// Detect unusual access patterns
+if (accessCount > user.avgAccess * 3) {
+  alertSecurityTeam(user.id);
+}
+```
+
+**5. Data Loss Prevention (DLP)**:
+- Monitor bulk data exports
+- Alert on unusual download patterns
+- Restrict data export to authorized personnel only
+
+#### **Risk Assessment**: MEDIUM
+**Justification**: Insider threats are hard to prevent but detected through audit logs.
+
+---
+
+### 12.9 Denial of Service (DoS) Attacks
+
+#### **Attack Description**:
+An attacker overwhelms the system with requests, making it unavailable to legitimate users.
+
+#### **Attack Vector**:
+```
+Attacker Botnet → Millions of Requests → Server Overload
+                                   ↓
+                            Service Unavailable
+```
+
+#### **Attack Types**:
+1. **Volumetric**: Flooding with massive traffic
+2. **Application Layer**: Expensive API calls
+3. **Slowloris**: Slow, incomplete requests
+4. **Resource Exhaustion**: CPU/memory intensive operations
+
+#### **Countermeasures Implemented**:
+
+**1. Rate Limiting**:
+```typescript
+// Global limit: 100 requests per 15 minutes
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests'
+});
+```
+
+**2. Authentication-Specific Limits**:
+```typescript
+// Stricter limits for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 100, // 100 auth attempts per hour
+  skipSuccessfulRequests: true
+});
+```
+
+**3. Resource Quotas**:
+```typescript
+// Limit file upload size
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ limit: '10mb' }));
+```
+
+**4. Connection Limits**:
+```typescript
+// Maximum concurrent connections
+server.maxConnections = 1000;
+```
+
+**5. Expensive Operation Protection**:
+```typescript
+// CAPTCHA after 3 failed attempts
+if (failedAttempts >= 3) {
+  requireCaptcha();
+}
+```
+
+#### **Risk Assessment**: MEDIUM
+**Justification**: Rate limiting helps but volumetric attacks require infrastructure-level protection.
+
+---
+
+## 13. ATTACK MITIGATION SUMMARY
+
+### Security Controls Effectiveness Matrix
+
+| Attack Type | Prevention | Detection | Response | Residual Risk |
+|-------------|-----------|-----------|----------|---------------|
+| **Brute Force** | bcrypt, Lockout | Failed login logs | Account lockout | LOW |
+| **MITM** | HTTPS, Secure cookies | Certificate monitoring | Session invalidation | LOW |
+| **SQL Injection** | ORM, Validation | WAF logs | Input blocking | LOW |
+| **XSS** | CSP, Sanitization | CSP reports | Script blocking | LOW |
+| **CSRF** | SameSite cookies | Origin validation | Request rejection | LOW |
+| **Session Hijacking** | Short sessions, Binding | IP/UA mismatch | Force re-auth | LOW |
+| **Replay** | Nonces, TOTP | Token reuse detection | Token invalidation | LOW |
+| **Insider Threat** | Audit logs | Anomaly detection | Access revocation | MEDIUM |
+| **DoS** | Rate limiting | Traffic monitoring | IP blocking | MEDIUM |
+
+### Defense in Depth Strategy
+
+The FIR Portal implements a **multi-layered defense** where multiple security controls work together:
+
+```
+Layer 1: Network (HTTPS, Firewalls)
+Layer 2: Application (Rate limiting, Input validation)
+Layer 3: Authentication (MFA, Session management)
+Layer 4: Authorization (RBAC, ACL)
+Layer 5: Data (Encryption at rest)
+Layer 6: Monitoring (Audit logs, Anomaly detection)
+```
+
+**Key Principle**: Even if one layer is compromised, other layers continue to protect the system.
+
+### Compliance with Security Standards
+
+- ✅ **OWASP Top 10**: All 10 categories addressed
+- ✅ **NIST SP 800-63-2**: AAL2 authentication achieved
+- ✅ **ISO 27001**: Information security controls implemented
+- ✅ **GDPR**: Data protection and privacy controls
+- ✅ **PCI DSS**: Secure data handling practices
+
+---
+
+## CONCLUSION
+
+The Online FIR Portal implements a comprehensive security architecture that addresses all major attack vectors through defense-in-depth principles. The combination of:
+
+1. **Strong Authentication** (MFA, bcrypt, Account lockout)
+2. **Robust Authorization** (RBAC, ACL, Ownership verification)
+3. **Data Protection** (AES-256-GCM, RSA-2048, Digital signatures)
+4. **Attack Prevention** (Rate limiting, Input validation, Secure headers)
+5. **Monitoring & Detection** (Audit logging, Anomaly detection)
+
+ensures that the system maintains confidentiality, integrity, and availability of sensitive FIR data while protecting against both external and internal threats.
+
+**Overall Security Posture**: PRODUCTION-READY with government-grade security controls.
