@@ -46,7 +46,7 @@ online-fir-portal/
 ├── nginx.conf
 ├── OnlineFirPortal.backend/
 │   ├── .env
-│   ├── .env.example
+│   ├── .env
 │   ├── Dockerfile
 │   ├── bun.lock
 │   ├── package-lock.json
@@ -116,7 +116,7 @@ online-fir-portal/
 │   └── package-lock.json
 │
 ├── OnlineFirPortal.frontend/
-│   ├── .env.example
+│   ├── .env
 │   ├── .env.local
 │   ├── Dockerfile
 │   ├── bun.lock
@@ -254,7 +254,7 @@ Root files
 
 Backend (`OnlineFirPortal.backend`)
 
-- `.env.example` — Example environment variables to configure the application. Document required variables (`DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`) and recommended formats; never put real secrets here.
+- `.env` — Example environment variables to configure the application. Document required variables (`DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`) and recommended formats; never put real secrets here.
 
 - `.env` — Local environment override (gitignored). Used for running local server and tests; handle with care and don't commit.
 
@@ -376,7 +376,7 @@ Frontend
   - Changing `tsconfig` can affect type checking and emitted JavaScript; keep it aligned with `eslint` and `ts-jest` settings.
   - Used by IDEs and tooling (editor intellisense, tsc, ts-node).
 
-- `.env.example` — Templated environment variables for new developers and deployment manifests.
+- `.env` — Templated environment variables for new developers and deployment manifests.
   - Documents required runtime variables such as `DATABASE_URL`, `JWT_SECRET`, `ENCRYPTION_KEY` and how to format them.
   - Should be safe to commit; never include real secrets here.
   - Use this as a reference to create a local `.env` (gitignored) for development.
@@ -1008,9 +1008,9 @@ Backend root & infra
   - Owner: Backend Team / DevOps
   - Suggested tests: CI checks that run `npm ci`, `npm run build`, `npm test` and validate `scripts` produce expected artifacts (build output exists); lint step enforcement.
 
-- `.env.example`, `.env`
+- `.env`, `.env`
   - Owner: DevOps
-  - Suggested tests: a verification script that ensures required vars exist in CI environment and `.env.example` documents them; `env` schema validation unit test.
+  - Suggested tests: a verification script that ensures required vars exist in CI environment and `.env` documents them; `env` schema validation unit test.
 
 - `Dockerfile`
   - Owner: DevOps

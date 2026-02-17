@@ -110,7 +110,7 @@ router.post('/', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), as
 // ==========================================
 router.post('/:id/link-fir', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const userId = req.user!.userId;
         const userRole = req.user!.role as UserRole;
         const ipAddress = getIp(req);

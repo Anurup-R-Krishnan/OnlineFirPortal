@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import { env } from './lib/env';
 import authRoutes from './routes/auth';
 import firRoutes from './routes/firs';
 import adminRoutes from './routes/admin';
@@ -10,18 +10,8 @@ import documentRoutes from './routes/documents';
 import notificationRoutes from './routes/notifications';
 import { securityHeaders, apiLimiter, authLimiter, hppMiddleware, sanitizeInputs } from './lib/security-middleware';
 
-const isTestEnv =
-    process.env.NODE_ENV === 'test' ||
-    typeof process.env.JEST_WORKER_ID !== 'undefined' ||
-    typeof process.env.BUN_TEST !== 'undefined' ||
-    process.argv.includes('test');
-
-if (!isTestEnv) {
-    dotenv.config();
-}
-
 export const app = express();
-const PORT = process.env.PORT || 4001;
+const PORT = env.port;
 
 // Global Security Middleware
 app.use(securityHeaders); // Helmet protection against common vulnerabilities
@@ -35,7 +25,7 @@ app.use(cookieParser());
 app.use(sanitizeInputs);  // Basic XSS sanitization
 
 // CORS Middleware
-const corsOrigins = (process.env.CORS_ORIGIN || 'http://localhost:4000')
+const corsOrigins = env.corsOrigin
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);

@@ -219,6 +219,8 @@ model FIR {
   incidentDate     DateTime
   incidentTime     String
   incidentPlace    String
+  incidentState    String?
+  incidentDistrict String?
   incidentLocation String? // gps coordinates
   crimeType        String // type of crime
   ipcSections      String? // applicable ipc sections

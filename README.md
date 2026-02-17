@@ -110,7 +110,7 @@ cd OnlineFirPortal.backend
 bun install
 
 # Setup environment
-cp .env.example .env
+cp .env .env
 # Edit .env with your configuration
 
 # Generate Prisma client

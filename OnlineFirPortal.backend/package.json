@@ -7,14 +7,16 @@
     "dev": "nodemon src/server.ts",
     "start": "ts-node src/server.ts",
     "build": "tsc",
-    "test": "jest --coverage",
-    "test:watch": "jest --watch"
+    "test": "npm run test:jest",
+    "test:jest": "jest --coverage --runInBand",
+    "test:watch": "jest --watch --runInBand",
+    "test:bun": "bun test tests/bun --max-concurrency 1"
   },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
     "roots": [
-      "<rootDir>/tests"
+      "<rootDir>/tests/jest"
     ],
     "testMatch": [
       "**/*.test.ts"
@@ -43,6 +45,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
+    "dotenv-safe": "^9.1.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
@@ -56,6 +59,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
+    "@types/dotenv-safe": "^9.1.0",
     "@types/express": "^5.0.6",
     "@types/hpp": "^0.2.7",
     "@types/jest": "^30.0.0",

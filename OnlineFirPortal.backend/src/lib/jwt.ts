@@ -4,26 +4,11 @@
  */
 
 import jwt from 'jsonwebtoken';
-
-// Helper to generate random hex string using Web Crypto API (fallback to Node crypto.randomBytes)
-function randomHex(bytes: number): string {
-  try {
-    const cryptoObj: any = (globalThis as any).crypto;
-    if (cryptoObj && typeof cryptoObj.getRandomValues === 'function') {
-      const arr = new Uint8Array(bytes);
-      cryptoObj.getRandomValues(arr);
-      return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-    }
-  } catch (e) {
-    // fall through to Node fallback
-  }
-  // Fallback to Node's crypto
-  return require('crypto').randomBytes(bytes).toString('hex');
-}
+import { env } from './env';
 
 // In production, use environment variables
-const JWT_SECRET = process.env.JWT_SECRET || randomHex(32);
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || randomHex(32);
+const JWT_SECRET = env.jwtSecret;
+const JWT_REFRESH_SECRET = env.jwtRefreshSecret;
 const ACCESS_TOKEN_EXPIRY = '15m'; // 15 minutes
 const REFRESH_TOKEN_EXPIRY = '7d'; // 7 days
 
@@ -86,5 +71,4 @@ export function verifyRefreshToken(token: string): { userId: string } | null {
     return null;
   }
 }
-
 

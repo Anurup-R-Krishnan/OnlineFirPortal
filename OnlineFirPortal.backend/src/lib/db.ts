@@ -1,8 +1,9 @@
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import { getDatabase } from './database-connection';
+import { env } from './env';
 
 // FIR encryption key from environment
-const FIR_ENCRYPTION_KEY = process.env.FIR_ENCRYPTION_KEY || 'default-fir-encryption-key-change-me';
+const FIR_ENCRYPTION_KEY = env.firEncryptionKey;
 
 // Synchronous encryption using Node.js crypto (AES-256-GCM)
 function encryptFIRDataSync(plaintext: string): string {
@@ -506,4 +507,3 @@ export function updateSettings(next: Record<string, any>) {
   }
   return getSettings();
 }
-

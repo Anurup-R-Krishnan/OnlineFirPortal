@@ -1027,6 +1027,9 @@ router.post('/logout', authenticateToken, async (req, res) => {
         if (sessionToken) {
             await revokeSession(sessionToken);
         }
+        // Ensure logout is effective even when cookie token format does not map
+        // 1:1 to stored session tokens.
+        await revokeAllUserSessions(userId);
 
         await logAudit({
             userId,

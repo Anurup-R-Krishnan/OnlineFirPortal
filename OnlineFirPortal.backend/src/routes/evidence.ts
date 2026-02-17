@@ -93,7 +93,7 @@ router.post('/', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), as
 // ==========================================
 router.get('/fir/:firId', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN', 'CITIZEN']), async (req, res) => {
     try {
-        const { firId } = req.params;
+        const firId = req.params.firId as string;
         const userId = req.user!.userId;
         const userRole = req.user!.role as UserRole;
 
@@ -140,7 +140,7 @@ router.get('/fir/:firId', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADM
 // ==========================================
 router.post('/:id/transfer', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
         const userId = req.user!.userId;
         const userRole = req.user!.role as UserRole;
         const ipAddress = getIp(req);
@@ -234,7 +234,7 @@ router.post('/:id/transfer', authenticateToken, requireRole(['OFFICER', 'SHO', '
 // ==========================================
 router.get('/:id/chain-of-custody', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = req.params.id as string;
 
         const history = await prisma.chainOfCustody.findMany({
             where: { evidenceId: id },

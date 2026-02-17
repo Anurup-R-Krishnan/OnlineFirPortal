@@ -72,7 +72,7 @@ export async function verifySession(token: string): Promise<{
 export async function revokeSession(token: string): Promise<void> {
     const tokenHash = createHash('sha256').update(token).digest('hex');
 
-    await prisma.session.update({
+    await prisma.session.updateMany({
         where: { tokenHash },
         data: {
             revoked: true,

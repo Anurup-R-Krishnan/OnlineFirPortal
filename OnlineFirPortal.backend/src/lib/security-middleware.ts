@@ -3,22 +3,27 @@ import helmet from "helmet";
 import hpp from "hpp";
 import { type Request, type Response, type NextFunction, type RequestHandler } from "express";
 
-// Rate limiter: 100 requests per 15 minutes per IP
+const API_RATE_LIMIT_WINDOW_MS = Number(process.env.API_RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000);
+const API_RATE_LIMIT_MAX = Number(process.env.API_RATE_LIMIT_MAX ?? 500);
+const AUTH_RATE_LIMIT_WINDOW_MS = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 60 * 60 * 1000);
+const AUTH_RATE_LIMIT_MAX = Number(process.env.AUTH_RATE_LIMIT_MAX ?? 300);
+
+// Rate limiter
 export const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 100,
+  windowMs: API_RATE_LIMIT_WINDOW_MS,
+  limit: API_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests from this IP, please try again after 15 minutes" }
+  message: { error: "Too many requests from this IP, please try again later" }
 });
 
-// Stricter limiter for auth routes: 100 requests per hour
+// Stricter limiter for auth routes
 export const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 100,
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  limit: AUTH_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many login attempts, please try again after an hour" }
+  message: { error: "Too many authentication requests, please try again later" }
 });
 
 export const securityHeaders = helmet();

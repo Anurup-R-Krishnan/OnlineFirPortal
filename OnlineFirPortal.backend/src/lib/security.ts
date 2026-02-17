@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { webcrypto } from 'crypto';
 import { prisma } from './prisma';
 import { logAuthAttempt } from './audit-logger';
+import { env } from './env';
 
 const crypto = (globalThis.crypto || webcrypto) as Crypto;
 
@@ -10,8 +11,8 @@ export * from './access-control';
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
 const loginAttemptStore = new Map<string, { count: number; resetAt: number }>();
 
-const RATE_LIMIT_WINDOW = 15 * 60 * 1000;
-const RATE_LIMIT_MAX_REQUESTS = 100;
+const RATE_LIMIT_WINDOW = Number(process.env.CUSTOM_RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000);
+const RATE_LIMIT_MAX_REQUESTS = Number(process.env.CUSTOM_RATE_LIMIT_MAX ?? 300);
 const LOGIN_ATTEMPT_WINDOW = 30 * 60 * 1000;
 const MAX_LOGIN_ATTEMPTS = 5;
 const ACCOUNT_LOCKOUT_DURATION = 30 * 60 * 1000;
@@ -391,20 +392,8 @@ export function generateFIRNumber(stateCode: string = 'IN'): string {
   return `FIR-${year}-${stateCode}-${random}`;
 }
 
-let warnedDefaultEncKey = false;
 function ensureEncryptionKey(): string {
-  const key = process.env.ENCRYPTION_KEY;
-  if (!key) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('ENCRYPTION_KEY is required in production environment');
-    }
-    if (!warnedDefaultEncKey) {
-      console.warn('[security] Using default ENCRYPTION_KEY. Set ENCRYPTION_KEY in .env for better security.');
-      warnedDefaultEncKey = true;
-    }
-    return 'default-encryption-key-change-in-production';
-  }
-  return key;
+  return env.encryptionKey;
 }
 
 export async function encryptData(data: string): Promise<string> {
@@ -416,4 +405,3 @@ export async function decryptData(encryptedData: string): Promise<string> {
   const key = ensureEncryptionKey();
   return await decryptAES(encryptedData, key);
 }
-

@@ -21,6 +21,65 @@ const ALLOWED_MIME_TYPES = [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
+router.get('/', authenticateToken, async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+        const { page = '1', limit = '20' } = req.query;
+
+        const where: any = {};
+
+        if (userRole === 'CITIZEN') {
+            where.uploadedById = userId;
+        } else if (userRole === 'OFFICER' || userRole === 'SHO') {
+            // For now, officers see documents they uploaded or related to their assigned FIRs?
+            // Simplified: only their uploads or all if admin. 
+            // Better logic: documents linked to FIRs assigned to them.
+            // But for "My Documents" page, usually implies "Uploaded by Me"
+            where.uploadedById = userId;
+        }
+
+        const skip = (parseInt(String(page)) - 1) * parseInt(String(limit));
+
+        const [documents, total] = await Promise.all([
+            prisma.document.findMany({
+                where,
+                select: {
+                    id: true,
+                    filename: true,
+                    mimetype: true,
+                    size: true,
+                    documentType: true,
+                    verified: true,
+                    verifiedAt: true,
+                    createdAt: true,
+                    fir: {
+                        select: {
+                            id: true,
+                            referenceNumber: true,
+                        }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: parseInt(String(limit)),
+            }),
+            prisma.document.count({ where }),
+        ]);
+
+        res.json({
+            documents,
+            total,
+            page: parseInt(String(page)),
+            limit: parseInt(String(limit)),
+            pages: Math.ceil(total / parseInt(String(limit))),
+        });
+    } catch (error: any) {
+        console.error('[list my documents error]', error);
+        res.status(500).json({ error: 'failed to list documents' });
+    }
+});
+
 router.post('/upload', authenticateToken, async (req, res) => {
     try {
         const userId = req.user!.userId;

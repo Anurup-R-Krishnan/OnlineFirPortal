@@ -11,7 +11,7 @@ const getIp = (req: express.Request): string => req.ip || req.socket.remoteAddre
 // ==========================================
 // get current roster
 // ==========================================
-router.get('/', authenticateToken, requireRole(['OFFICER', 'SHO', 'ADMIN']), async (req, res) => {
+router.get('/', authenticateToken, requireRole(['SHO', 'ADMIN']), async (req, res) => {
     try {
         const { date, station } = req.query;
 

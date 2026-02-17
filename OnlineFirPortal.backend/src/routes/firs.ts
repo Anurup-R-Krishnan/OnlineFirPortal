@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticateToken, requireRole } from '../lib/auth-middleware';
 import { logAudit } from '../lib/audit-logger';
 import { encryptData, decryptData, sanitizeInput, generateFIRNumber, verifySignature } from '../lib/security';
-import { UserRole, FIRStatus } from '@prisma/client';
+import { UserRole, FIRStatus, NotificationType } from '@prisma/client';
 
 const router = express.Router();
 
@@ -117,6 +117,8 @@ router.post('/', authenticateToken, requireRole(['CITIZEN']), async (req, res) =
                 incidentDate: new Date(incidentDate),
                 incidentTime: incidentTime || '',
                 incidentPlace: sanitizeInput(incidentPlace),
+                incidentState: sanitizeInput(incidentState),
+                incidentDistrict: sanitizeInput(incidentDistrict),
                 ipcSections: ipcSections || null,
                 encryptedData,
                 status: signatureVerified ? 'SUBMITTED' : 'DRAFT',
@@ -150,10 +152,13 @@ router.post('/', authenticateToken, requireRole(['CITIZEN']), async (req, res) =
         });
 
         res.status(201).json({
+            ...fir,
+            reporter: {
+                id: userId,
+                name: req.user!.name || req.user!.email,
+                role: userRole,
+            },
             success: true,
-            id: fir.id,
-            referenceNumber: fir.referenceNumber,
-            status: fir.status,
             signed: signatureVerified,
             message: signatureVerified ? 'fir created and submitted with digital signature' : 'fir created successfully',
         });
@@ -288,7 +293,7 @@ router.get('/', authenticateToken, async (req, res) => {
 
         if (userRole === 'CITIZEN') {
             where.reporterId = userId;
-        } else if (userRole === 'OFFICER' || userRole === 'SHO') {
+        } else if (userRole === 'OFFICER') {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
                 select: { policeStation: true },
@@ -296,6 +301,18 @@ router.get('/', authenticateToken, async (req, res) => {
             if (user?.policeStation) {
                 where.assignedStation = user.policeStation;
             }
+        } else if (userRole === 'SHO') {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { policeStation: true },
+            });
+
+            // SHO must see newly submitted (unassigned) FIRs to perform assignment,
+            // plus FIRs already mapped to their station.
+            where.OR = [
+                { status: 'SUBMITTED' },
+                ...(user?.policeStation ? [{ assignedStation: user.policeStation }] : []),
+            ];
         }
 
         if (status) {
@@ -365,7 +382,7 @@ router.get('/stats', authenticateToken, async (req, res) => {
 
         if (userRole === 'CITIZEN') {
             where.reporterId = userId;
-        } else if (userRole === 'OFFICER' || userRole === 'SHO') {
+        } else if (userRole === 'OFFICER') {
             const user = await prisma.user.findUnique({
                 where: { id: userId },
                 select: { policeStation: true },
@@ -373,6 +390,16 @@ router.get('/stats', authenticateToken, async (req, res) => {
             if (user?.policeStation) {
                 where.assignedStation = user.policeStation;
             }
+        } else if (userRole === 'SHO') {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { policeStation: true },
+            });
+
+            where.OR = [
+                { status: 'SUBMITTED' },
+                ...(user?.policeStation ? [{ assignedStation: user.policeStation }] : []),
+            ];
         }
 
         const stats = await prisma.fIR.groupBy({
@@ -412,6 +439,57 @@ router.get('/stats', authenticateToken, async (req, res) => {
     } catch (error: any) {
         console.error('[get fir stats error]', error);
         res.status(500).json({ error: 'failed to get fir stats' });
+    }
+});
+
+// ==========================================
+// list assignable officers for FIR assignment
+// ==========================================
+router.get('/officers', authenticateToken, requireRole(['SHO', 'ADMIN', 'SUPER_ADMIN']), async (req, res) => {
+    try {
+        const userId = req.user!.userId;
+        const userRole = req.user!.role as UserRole;
+
+        let where: any = {
+            role: { in: ['OFFICER', 'SHO'] },
+            accountStatus: 'ACTIVE',
+        };
+
+        // SHO can assign only within their own station by default.
+        if (userRole === 'SHO') {
+            const sho = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { policeStation: true },
+            });
+
+            if (sho?.policeStation) {
+                where.policeStation = sho.policeStation;
+            }
+        }
+
+        const officers = await prisma.user.findMany({
+            where,
+            select: {
+                id: true,
+                name: true,
+                role: true,
+                policeStation: true,
+                badgeNumber: true,
+                rank: true,
+                email: true,
+                mobile: true,
+            },
+            orderBy: [
+                { policeStation: 'asc' },
+                { role: 'asc' },
+                { name: 'asc' },
+            ],
+        });
+
+        res.json({ officers });
+    } catch (error: any) {
+        console.error('[list officers error]', error);
+        res.status(500).json({ error: 'failed to list officers' });
     }
 });
 
@@ -465,7 +543,19 @@ router.get('/:id', authenticateToken, async (req, res) => {
             return;
         }
 
-        const decryptedData = JSON.parse(await decryptData(fir.encryptedData || '{}'));
+        let decryptedData: Record<string, any> = {};
+        if (fir.encryptedData) {
+            try {
+                const decrypted = await decryptData(fir.encryptedData);
+                decryptedData = JSON.parse(decrypted);
+            } catch (decryptError) {
+                // Keep the FIR readable even if legacy/corrupted encrypted payload cannot be decrypted.
+                console.warn('[get fir decrypt warning]', {
+                    firId: fir.id,
+                    error: decryptError instanceof Error ? decryptError.message : String(decryptError),
+                });
+            }
+        }
 
         res.json({
             ...fir,
