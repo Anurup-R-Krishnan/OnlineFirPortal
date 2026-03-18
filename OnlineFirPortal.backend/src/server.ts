@@ -8,6 +8,7 @@ import adminRoutes from './routes/admin';
 import ipcRoutes from './routes/ipc';
 import documentRoutes from './routes/documents';
 import notificationRoutes from './routes/notifications';
+import securityLabRoutes from './routes/security-lab';
 import { securityHeaders, apiLimiter, authLimiter, hppMiddleware, sanitizeInputs } from './lib/security-middleware';
 
 export const app = express();
@@ -62,6 +63,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/ipc', ipcRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/security-lab', securityLabRoutes);
 
 // Station Module Routes
 import evidenceRoutes from './routes/evidence';

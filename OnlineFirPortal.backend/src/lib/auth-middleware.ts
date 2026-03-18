@@ -84,7 +84,7 @@ export function checkPermission(
   }
 
   // Additional ownership check for citizens
-  if (role === 'citizen' && resourceOwnerId && resourceOwnerId !== user.userId) {
+  if (role === 'CITIZEN' && resourceOwnerId && resourceOwnerId !== user.userId) {
     logAccessAttempt({
       timestamp: new Date().toISOString(),
       userId: user.userId,
@@ -135,4 +135,3 @@ export function requireRole(allowedRoles: string[]) {
     next();
   };
 }
-

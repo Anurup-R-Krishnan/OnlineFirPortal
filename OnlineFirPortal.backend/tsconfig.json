@@ -9,6 +9,7 @@
     "target": "esnext",
     "types": [
       "node",
+      "jest",
       "bun-types",
       "bun-types/test"
     ],
