@@ -1,7 +1,7 @@
 {
   "name": "onlinefirportal.backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Accessible online FIR filing platform with evidence integrity, MFA, audit trails, and role-based police workflows.",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.ts",
@@ -37,7 +37,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "@prisma/client": "^6.19.2",
