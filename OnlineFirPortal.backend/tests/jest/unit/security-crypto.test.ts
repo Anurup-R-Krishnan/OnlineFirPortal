@@ -39,7 +39,7 @@ describe('AES-256-GCM encryption integrity', () => {
     // Flip the final byte of the AES-GCM payload. The auth tag then fails to
     // verify and WebCrypto must reject rather than yield altered data.
     const bytes = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
-    bytes[bytes.length - 1] ^= 0xff;
+    bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 0xff;
     const tampered = btoa(String.fromCharCode(...bytes));
 
     await expect(decryptAES(tampered, TEST_PASSWORD)).rejects.toThrow();
