@@ -25,3 +25,14 @@ build/
 out/
 .next/
 coverage/
+*.tsbuildinfo
+
+# Local databases and state
+*.db
+*.db-journal
+
+# TLS material (nginx)
+*.pem
+
+# Local editor / tooling state
+.claude/
