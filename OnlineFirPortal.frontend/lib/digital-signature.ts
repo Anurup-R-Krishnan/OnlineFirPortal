@@ -162,11 +162,14 @@ function bufferToBase64(buffer: ArrayBuffer): string {
     return btoa(String.fromCharCode(...new Uint8Array(buffer)));
 }
 
-function base64ToBuffer(base64: string): ArrayBuffer {
+function base64ToBuffer(base64: string): Uint8Array<ArrayBuffer> {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
         bytes[i] = binary.charCodeAt(i);
     }
-    return bytes.buffer;
+    // Return the TypedArray, not its .buffer: crypto.subtle.importKey and
+    // verify identify TypedArrays by internal slot, which works across realms
+    // and across Node versions (a raw ArrayBuffer is rejected by Node 20).
+    return bytes;
 }
