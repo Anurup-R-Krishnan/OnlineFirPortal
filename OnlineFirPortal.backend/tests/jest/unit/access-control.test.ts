@@ -34,4 +34,31 @@ describe('access control policy', () => {
     expect(canAccessRoute('OFFICER', '/file-fir')).toBe(false);
     expect(canAccessRoute('ADMIN', '/admin')).toBe(true);
   });
+
+  it('denies citizens the SHO-only assign action (privilege escalation)', () => {
+    expect(hasPermission('CITIZEN', 'fir', 'assign')).toBe(false);
+    expect(canAccessFIR('CITIZEN', 'user-1', 'user-1', 'assign').allowed).toBe(false);
+  });
+
+  it('denies officers the SHO-only assign action', () => {
+    expect(hasPermission('OFFICER', 'fir', 'assign')).toBe(false);
+  });
+
+  it('rejects unknown roles entirely', () => {
+    const intruder = 'INTRUDER' as never;
+    expect(hasPermission(intruder, 'fir', 'read')).toBe(false);
+    expect(hasPermission(intruder, 'fir', 'create')).toBe(false);
+    expect(hasPermission(intruder, 'documents', 'upload')).toBe(false);
+    expect(canAccessFIR(intruder, 'user-1', 'user-1', 'read').allowed).toBe(false);
+    expect(canAccessRoute(intruder, '/dashboard')).toBe(false);
+    expect(canAccessRoute(intruder, '/admin')).toBe(false);
+  });
+
+  it('gates administrative routes to administrators', () => {
+    expect(canAccessRoute('CITIZEN', '/admin')).toBe(false);
+    expect(canAccessRoute('OFFICER', '/admin')).toBe(false);
+    expect(canAccessRoute('SHO', '/admin')).toBe(false);
+    expect(canAccessRoute('ADMIN', '/admin')).toBe(true);
+    expect(canAccessRoute('SUPER_ADMIN', '/admin')).toBe(true);
+  });
 });
