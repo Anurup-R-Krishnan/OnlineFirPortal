@@ -1,5 +1,5 @@
 # Build Stage
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ ENV NEXT_TELEMETRY_DISABLED 1
 RUN npm run build
 
 # Production Stage
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 
