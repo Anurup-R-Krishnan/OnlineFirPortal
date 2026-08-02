@@ -14,6 +14,7 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - FIR_ENCRYPTION_KEY=${FIR_ENCRYPTION_KEY}
     depends_on:
       - db
     networks:
@@ -27,7 +28,8 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - NEXT_PUBLIC_API_URL=https://fir.gov.in/api
+      # The frontend rewrites /api/* to this base URL (see next.config.mjs)
+      - API_BASE_URL=http://app-backend:4001
     depends_on:
       - app-backend
     networks:

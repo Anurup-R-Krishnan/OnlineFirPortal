@@ -9,13 +9,13 @@
 BACKUP_DIR="/var/backups/onlinefir"
 DB_HOST="localhost"
 DB_PORT="5432"
-DB_USER="fir_user"
-DB_NAME="fir_portal_prod"
+DB_USER="postgres"
+DB_NAME="onlinefir"
 DATE=$(date +%Y-%m-%d_%H-%M-%S)
 BACKUP_FILE="$BACKUP_DIR/db_backup_$DATE.sql.gz"
 LOG_FILE="/var/log/fir-backup.log"
 RETENTION_DAYS=30
-ALERT_EMAIL="admin@fir.gov.in"
+ALERT_EMAIL="alerts@example.com"
 
 # Colors
 GREEN='\033[0;32m'

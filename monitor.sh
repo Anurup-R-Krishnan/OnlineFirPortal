@@ -7,10 +7,10 @@
 
 # Configuration
 FRONTEND_URL="http://localhost:4000"
-BACKEND_URL="http://localhost:5000"
-API_HEALTH_ENDPOINT="${BACKEND_URL}/api/health"
+BACKEND_URL="http://localhost:4001"
+API_HEALTH_ENDPOINT="${BACKEND_URL}/"
 LOG_FILE="/var/log/fir-monitor.log"
-ALERT_EMAIL="admin@fir.gov.in"
+ALERT_EMAIL="alerts@example.com"
 SLACK_WEBHOOK=""  # Optional: Add Slack webhook for alerts
 
 # Colors for output
