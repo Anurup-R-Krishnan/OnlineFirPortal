@@ -340,8 +340,8 @@ export default function FileFIRPage() {
       }
 
       setSubmittedFIR(created);
-    } catch (e: any) {
-      alert(`Submission failed: ${e.message}`);
+    } catch (e: unknown) {
+      alert(`Submission failed: ${e instanceof Error ? e.message : "An unknown error occurred"}`);
     } finally {
       setIsSubmitting(false);
     }

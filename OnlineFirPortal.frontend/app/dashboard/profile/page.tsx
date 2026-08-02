@@ -32,7 +32,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { getAuthState, type User as AuthUser } from "@/lib/auth-store";
+import { useAuth } from "@/lib/auth-store";
 import { getFIRsByUser, type FIR } from "@/lib/fir-store";
 
 const defaultProfile = {
@@ -56,7 +56,7 @@ function formatDate(value?: string) {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const { user: authUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [stats, setStats] = useState({ total: 0, active: 0 });
@@ -66,23 +66,26 @@ export default function ProfilePage() {
     phone: "",
     address: "",
   });
+  const [formInitializedFor, setFormInitializedFor] = useState<string | null>(null);
 
   useEffect(() => {
-    const authState = getAuthState();
-    if (!authState.isAuthenticated || !authState.mfaVerified) {
+    if (!authUser) {
       router.push("/auth");
-      return;
     }
-    if (authState.isAuthenticated && authState.user) {
-      setAuthUser(authState.user);
-      setFormData({
-        name: authState.user.name || "",
-        email: authState.user.email || "",
-        phone: authState.user.mobile || "",
-        address: "",
-      });
-    }
-  }, [router]);
+  }, [authUser, router]);
+
+  // Initialize the editable form from the logged-in user, once per identity.
+  // React documents this "adjust state during render" pattern as the safe way
+  // to derive state from changing props without writing inside an effect.
+  if (authUser && formInitializedFor !== authUser.id) {
+    setFormInitializedFor(authUser.id);
+    setFormData({
+      name: authUser.name || "",
+      email: authUser.email || "",
+      phone: authUser.mobile || "",
+      address: "",
+    });
+  }
 
   useEffect(() => {
     if (!authUser) return;

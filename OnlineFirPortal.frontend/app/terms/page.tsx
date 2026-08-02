@@ -68,7 +68,7 @@ export default function TermsPage() {
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p>
-                  By accessing and using the Online FIR Portal ("the Portal"), you
+                  By accessing and using the Online FIR Portal (&quot;the Portal&quot;), you
                   agree to be bound by these Terms and Conditions. If you do not
                   agree with any part of these terms, you must not use the Portal.
                 </p>
@@ -259,12 +259,12 @@ export default function TermsPage() {
               <CardContent className="space-y-3 text-sm">
                 <p>
                   <strong>8.1 Service Availability:</strong> The Portal is provided
-                  "as is" and "as available." We do not guarantee uninterrupted or
+                  &quot;as is&quot; and &quot;as available.&quot; We do not guarantee uninterrupted or
                   error-free service.
                 </p>
                 <p>
                   <strong>8.2 No Warranty:</strong> We make no warranties,
-                  expressed or implied, regarding the Portal's operation or the
+                  expressed or implied, regarding the Portal&apos;s operation or the
                   information provided.
                 </p>
                 <p>

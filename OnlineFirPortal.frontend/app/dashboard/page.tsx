@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getAuthState, type User } from "@/lib/auth-store";
+import { useAuth } from "@/lib/auth-store";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FileText,
@@ -18,7 +18,7 @@ import { getMyDocuments, type Document } from "@/lib/document-store";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, token } = useAuth();
   const [stats, setStats] = useState({
     total: 0,
     pending: 0,
@@ -28,15 +28,10 @@ export default function DashboardPage() {
   const [recentDocuments, setRecentDocuments] = useState<Document[]>([]);
 
   useEffect(() => {
-    const state = getAuthState();
-    if (!state.user) return;
-    setUser(state.user);
+    if (!user || !token) return;
 
     const loadDashboardData = async () => {
       try {
-        const token = state.accessToken;
-        if (!token) return;
-
         const res = await fetch('/api/firs/stats', {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -58,7 +53,7 @@ export default function DashboardPage() {
     };
 
     loadDashboardData();
-  }, [router]);
+  }, [user, token, router]);
 
   if (!user) return null;
 
@@ -67,7 +62,7 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">
-          Welcome back, {user.name}. Here's an overview of your activity.
+          Welcome back, {user.name}. Here&apos;s an overview of your activity.
         </p>
       </div>
 

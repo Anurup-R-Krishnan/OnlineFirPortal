@@ -1,7 +1,7 @@
 "use client";
 
 import { PoliceSidebar } from "@/components/police/Sidebar";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, logout } from "@/lib/auth-store";
 import { NotificationBell } from "@/components/ui/notification-bell";
@@ -19,34 +19,20 @@ import { Badge } from "@/components/ui/badge";
 export default function PoliceLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const { isAuthenticated, user } = useAuth();
-    const [authorized, setAuthorized] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
+    const authorized = isAuthenticated && !!user && user.role !== 'CITIZEN';
 
     useEffect(() => {
         if (!isAuthenticated || !user) {
             router.push("/auth");
-            setAuthorized(false);
         } else if (user.role === 'CITIZEN') {
             router.push("/dashboard");
-            setAuthorized(false);
-        } else {
-            setAuthorized(true);
         }
-        setIsLoading(false);
     }, [isAuthenticated, user, router]);
 
     const handleLogout = () => {
         logout();
         router.push("/auth");
     };
-
-    if (isLoading) {
-        return (
-            <div className="flex h-screen items-center justify-center bg-background">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-        );
-    }
 
     if (!authorized) return null;
 

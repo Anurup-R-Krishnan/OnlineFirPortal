@@ -26,6 +26,8 @@ export interface Criminal {
     firs?: CriminalFir[];
 }
 
+export type CreateCriminalInput = Omit<Criminal, 'id' | 'status' | 'firs'> & { status?: string };
+
 export interface CriminalFir {
     involvementType: string;
     status?: string;
@@ -45,7 +47,7 @@ export const criminalsApi = {
         return await res.json();
     },
 
-    create: async (data: any) => {
+    create: async (data: CreateCriminalInput): Promise<Criminal> => {
         const res = await fetch('/api/criminals', {
             method: 'POST',
             headers: withAuthHeaders({ 'Content-Type': 'application/json' }),

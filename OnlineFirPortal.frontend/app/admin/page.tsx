@@ -11,10 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Shield, LogOut, Users, FileText, Settings, BarChart3 } from "lucide-react";
-import { getAuthState, logout, type User as AuthUser, getAccessToken, completeLogin } from "@/lib/auth-store";
+import { logout, useAuth, type User as AuthUser, getAccessToken, completeLogin } from "@/lib/auth-store";
 import { type FIR } from "@/lib/fir-store";
 
-interface AdminUser extends AuthUser { }
+type AdminUser = AuthUser;
 
 interface AdminDocument {
   id: string;
@@ -46,7 +46,7 @@ function withAuthHeaders(headers: HeadersInit = {}): HeadersInit {
 
 export default function AdminPage() {
   const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -111,7 +111,7 @@ export default function AdminPage() {
         fetchAdminJson<AdminUser[]>("/api/admin/users"),
         fetchAdminJson<AdminDocument[]>("/api/admin/documents"),
         fetchAdminJson<ReportSummary>("/api/admin/reports/summary"),
-        fetchAdminJson<Record<string, any>>("/api/admin/settings"),
+        fetchAdminJson<Partial<AdminSettings>>("/api/admin/settings"),
         fetchAdminJson<FIR[]>("/api/admin/firs")
       ]);
 
@@ -123,39 +123,42 @@ export default function AdminPage() {
         ...settingsData
       }));
       setFirs(firsData);
-    } catch (err: any) {
-      setError(err.message || "Failed to load admin data");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load admin data");
     }
   };
 
   useEffect(() => {
-    const authState = getAuthState();
-    if (!authState.isAuthenticated || !authState.mfaVerified) {
+    if (!user) {
       router.push("/auth");
       return;
     }
 
-    if (authState.user?.role === "CITIZEN") {
+    if (user.role === "CITIZEN") {
       router.push("/dashboard");
       return;
     }
 
-    if (authState.user?.role === "OFFICER" || authState.user?.role === "SHO") {
+    if (user.role === "OFFICER" || user.role === "SHO") {
       router.push("/police");
       return;
     }
 
-    setUser(authState.user);
-    loadData().finally(() => setIsLoading(false));
-  }, [router]);
+    const initialize = async () => {
+      await loadData();
+      setIsLoading(false);
+    };
+
+    void initialize();
+  }, [user, router]);
 
   const handleDeleteUser = async (userId: string) => {
     if (!confirm("Delete this user and all related FIR data?")) return;
     try {
       await fetchAdminJson(`/api/admin/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
       loadData();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete user");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete user");
     }
   };
 
@@ -164,8 +167,8 @@ export default function AdminPage() {
     try {
       await fetchAdminJson(`/api/admin/firs/${encodeURIComponent(firId)}`, { method: "DELETE" });
       loadData();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete FIR");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete FIR");
     }
   };
 
@@ -174,8 +177,8 @@ export default function AdminPage() {
     try {
       await fetchAdminJson(`/api/admin/documents/${encodeURIComponent(docId)}`, { method: "DELETE" });
       loadData();
-    } catch (err: any) {
-      setError(err.message || "Failed to delete document");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete document");
     }
   };
 
@@ -183,14 +186,14 @@ export default function AdminPage() {
     setIsSavingSettings(true);
     setError("");
     try {
-      const updated = await fetchAdminJson<Record<string, any>>("/api/admin/settings", {
+      const updated = await fetchAdminJson<Partial<AdminSettings>>("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings)
       });
       setSettings((prev) => ({ ...prev, ...updated }));
-    } catch (err: any) {
-      setError(err.message || "Failed to update settings");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update settings");
     }
     setIsSavingSettings(false);
   };

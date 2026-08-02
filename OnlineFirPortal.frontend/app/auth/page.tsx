@@ -61,6 +61,23 @@ interface StoredUser {
   createdAt: string;
 }
 
+interface RawUser {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string;
+  aadhaar?: string;
+  role: UserRole;
+  mfaEnabled?: boolean;
+  policeStation?: string;
+  badgeNumber?: string;
+  accountStatus: AuthUser["accountStatus"];
+  createdAt?: string;
+  updatedAt?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export default function AuthPage() {
   const router = useRouter();
   const { isAuthenticated, user, mfaVerified } = useAuth();
@@ -135,19 +152,19 @@ export default function AuthPage() {
     setErrors(newErrors);
   }, [formData]);
 
-  const toAuthUser = (raw: any): AuthUser => ({
+  const toAuthUser = (raw: RawUser): AuthUser => ({
     id: raw.id,
     name: raw.name,
     email: raw.email,
     mobile: raw.mobile,
     aadhaar: raw.aadhaar,
     role: raw.role,
-    mfaEnabled: raw.mfaEnabled,
+    mfaEnabled: raw.mfaEnabled ?? false,
     policeStation: raw.policeStation,
     badgeNumber: raw.badgeNumber,
     accountStatus: raw.accountStatus,
-    createdAt: raw.createdAt || raw.created_at,
-    updatedAt: raw.updatedAt || raw.updated_at,
+    createdAt: raw.createdAt || raw.created_at || new Date().toISOString(),
+    updatedAt: raw.updatedAt || raw.updated_at || new Date().toISOString(),
   });
 
   useEffect(() => {
@@ -215,8 +232,8 @@ export default function AuthPage() {
       login(authUser, data.accessToken);
       const redirectPath = authUser.role === "CITIZEN" ? "/dashboard" : authUser.role === "ADMIN" ? "/admin" : "/police";
       router.push(redirectPath);
-    } catch (err: any) {
-      setError(err.message || "An error occurred. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An error occurred. Please try again.");
     }
 
     setIsLoading(false);
@@ -250,8 +267,8 @@ export default function AuthPage() {
       login(authUser, data.accessToken);
       const redirectPath = authUser.role === "CITIZEN" ? "/dashboard" : authUser.role === "ADMIN" ? "/admin" : "/police";
       router.push(redirectPath);
-    } catch (err: any) {
-      setError(err.message || "MFA verification failed. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "MFA verification failed. Please try again.");
     }
 
     setIsLoading(false);
@@ -286,8 +303,8 @@ export default function AuthPage() {
       setSuccess("MFA Setup Complete! Please save your recovery codes.");
       setLoginStep("mfa-setup"); // Stay on this step to show recovery codes, handled in render
 
-    } catch (err: any) {
-      setError(err.message || "MFA setup failed. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "MFA setup failed. Please try again.");
     }
 
     setIsLoading(false);
@@ -325,8 +342,8 @@ export default function AuthPage() {
 
       setRegStep("verify");
       setSuccess("OTP sent to your email address");
-    } catch (err: any) {
-      setError(err.message || "Failed to send OTP");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to send OTP");
     }
 
     setIsLoading(false);
@@ -378,8 +395,8 @@ export default function AuthPage() {
       setRegMfaSecret(mfaData.secret);
       setRegStep("mfa-setup");
       setSuccess("Scan QR code with Google Authenticator");
-    } catch (err: any) {
-      setError(err.message || "Aadhaar verification failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Aadhaar verification failed");
     }
 
     setIsLoading(false);
@@ -444,8 +461,8 @@ export default function AuthPage() {
       setRegRecoveryCodes(regData.recoveryCodes || []);
       setRegStep("complete");
       setSuccess("Account created successfully with MFA enabled");
-    } catch (err: any) {
-      setError(err.message || "Registration failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Registration failed");
     }
 
     setIsLoading(false);
@@ -1137,7 +1154,7 @@ export default function AuthPage() {
                             Save Your Recovery Codes
                           </h4>
                           <p className="text-sm text-yellow-700 mb-3">
-                            Store these codes in a safe place. You'll need them to access your account if you lose your device.
+                            Store these codes in a safe place. You&apos;ll need them to access your account if you lose your device.
                           </p>
                           <div className="grid grid-cols-2 gap-2 font-mono text-sm bg-white p-3 rounded border">
                             {regRecoveryCodes.map((code, i) => (

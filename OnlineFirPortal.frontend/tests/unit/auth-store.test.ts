@@ -36,10 +36,10 @@ describe('Auth Store', () => {
                 }
             };
 
-            (global.fetch as any).mockResolvedValueOnce({
+            vi.mocked(global.fetch).mockResolvedValueOnce({
                 ok: true,
                 json: async () => mockResponse
-            });
+            } as Response);
 
             const result = await login('test@example.com', 'password123');
 
@@ -49,10 +49,10 @@ describe('Auth Store', () => {
         });
 
         it('should handle login failure', async () => {
-            (global.fetch as any).mockResolvedValueOnce({
+            vi.mocked(global.fetch).mockResolvedValueOnce({
                 ok: false,
                 json: async () => ({ error: 'Invalid credentials' })
-            });
+            } as Response);
 
             const result = await login('test@example.com', 'wrongpassword');
 

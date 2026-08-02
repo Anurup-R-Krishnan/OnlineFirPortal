@@ -12,14 +12,24 @@ interface AutoSaveOptions {
     onRestore?: () => void;
 }
 
-export function useAutoSave<T extends Record<string, any>>(
+export function useAutoSave<T extends object>(
     formData: T,
     options: AutoSaveOptions
 ) {
     const { key, debounceMs = 2000, onSave, onRestore } = options;
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [isDirty, setIsDirty] = useState(false);
+    const [lastSerialized, setLastSerialized] = useState<string>(() => JSON.stringify(formData));
     const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+    // Detect form changes during render. React documents this guarded
+    // "adjust state during render" pattern as the safe way to derive state
+    // from changing input without writing inside an effect.
+    const serialized = JSON.stringify(formData);
+    if (serialized !== lastSerialized) {
+        setLastSerialized(serialized);
+        setIsDirty(true);
+    }
 
     // Restore from localStorage on mount
     useEffect(() => {
@@ -33,6 +43,7 @@ export function useAutoSave<T extends Record<string, any>>(
                 console.error('Failed to restore form data:', error);
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [key]);
 
     // Auto-save on form data change
@@ -41,11 +52,11 @@ export function useAutoSave<T extends Record<string, any>>(
             clearTimeout(timeoutRef.current);
         }
 
-        setIsDirty(true);
-
         timeoutRef.current = setTimeout(() => {
-            localStorage.setItem(key, JSON.stringify(formData));
+            const snapshot = JSON.stringify(formData);
+            localStorage.setItem(key, snapshot);
             setLastSaved(new Date());
+            setLastSerialized(snapshot);
             setIsDirty(false);
             onSave?.();
         }, debounceMs);
@@ -55,10 +66,12 @@ export function useAutoSave<T extends Record<string, any>>(
                 clearTimeout(timeoutRef.current);
             }
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formData, key, debounceMs]);
 
     const clearDraft = () => {
         localStorage.removeItem(key);
+        setLastSerialized(JSON.stringify(formData));
         setLastSaved(null);
         setIsDirty(false);
     };

@@ -57,7 +57,7 @@ export default function MyFIRsPage() {
         fetchFIRs();
     }, [isAuthenticated, user, router]);
 
-    const getStatusType = (status: string) => {
+    const getStatusType = (status: string): "default" | "secondary" | "destructive" | "outline" | "success" | "warning" => {
         switch (status) {
             case "DRAFT": return "secondary";
             case "SUBMITTED": return "warning"; // amber/yellow
@@ -168,7 +168,7 @@ export default function MyFIRsPage() {
                                             {new Date(fir.createdAt).toLocaleDateString()}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge variant={getStatusType(fir.status) as any} className="gap-1">
+                                            <Badge variant={getStatusType(fir.status)} className="gap-1">
                                                 {getStatusIcon(fir.status)}
                                                 {fir.status.replace("_", " ")}
                                             </Badge>

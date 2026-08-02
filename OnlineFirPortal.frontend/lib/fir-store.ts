@@ -2,6 +2,25 @@ import { getAccessToken } from './auth-store';
 
 export type FIRStatus = 'DRAFT' | 'SUBMITTED' | 'UNDER_INVESTIGATION' | 'CLOSED' | 'REJECTED';
 
+export interface FIRDocument {
+    id: string;
+    filename: string;
+    documentType: string;
+    size?: number;
+    mimetype?: string;
+    uploadedBy?: string;
+    uploadedAt?: string;
+}
+
+export interface FIRSigningPayload {
+    reporterId?: string;
+    crimeType?: string;
+    complaintType?: string;
+    incidentDate?: string;
+    incidentPlace?: string;
+    description?: string;
+}
+
 export interface FIR {
     id: string;
     referenceNumber: string;
@@ -39,7 +58,7 @@ export interface FIR {
     witnessDetails?: string;
     suspectDetails?: string;
 
-    documents: Array<any>; // Update based on document handling
+    documents: FIRDocument[];
 
     signature?: string;
     signedAt?: string;
@@ -95,7 +114,7 @@ export async function createFIR(data: {
     return await res.json();
 }
 
-export async function submitFIR(id: string, firData?: any): Promise<void> {
+export async function submitFIR(id: string, firData?: FIRSigningPayload): Promise<void> {
     let signature: string | undefined;
 
     let signatureData: string | undefined;
@@ -155,7 +174,7 @@ export async function getFIRById(id: string): Promise<FIR | null> {
             throw new Error('FORBIDDEN');
         }
 
-        const errorBody = await res.json().catch(() => ({} as any));
+        const errorBody = await res.json().catch(() => ({}));
         throw new Error(errorBody?.error || `Failed to fetch FIR (${res.status})`);
     };
 
@@ -202,7 +221,7 @@ export async function updateFIRStatus(
     });
 
     if (!res.ok) {
-        const err = await res.json().catch(() => ({} as any));
+        const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || `Failed to update FIR status (${res.status})`);
     }
 }
@@ -258,7 +277,7 @@ export async function getAssignableOfficers(): Promise<AssignableOfficer[]> {
     });
     if (res.status === 403) return [];
     if (!res.ok) {
-        const err = await res.json().catch(() => ({} as any));
+        const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || `Failed to fetch assignable officers (${res.status})`);
     }
     const data = await res.json();

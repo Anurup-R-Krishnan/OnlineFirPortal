@@ -63,7 +63,7 @@ import {
   AlertTriangle,
   ShieldCheck,
 } from "lucide-react";
-import { getAuthState, logout, type User as AuthUser } from "@/lib/auth-store";
+import { logout, useAuth } from "@/lib/auth-store";
 import {
   getAllFIRs,
   updateFIRStatus,
@@ -108,7 +108,7 @@ const statusConfig: Record<FIRStatus, { label: string; color: string; icon: Reac
 
 export default function PoliceDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const { user } = useAuth();
   const [firs, setFirs] = useState<FIR[]>([]);
   const [assignableOfficers, setAssignableOfficers] = useState<AssignableOfficer[]>([]);
   const [stats, setStats] = useState({
@@ -145,33 +145,6 @@ export default function PoliceDashboard() {
   const [updateNote, setUpdateNote] = useState("");
   const [newStatus, setNewStatus] = useState<FIRStatus>("UNDER_INVESTIGATION");
 
-  useEffect(() => {
-    const authState = getAuthState();
-    if (!authState.isAuthenticated || !authState.mfaVerified) {
-      router.push("/auth");
-      return;
-    }
-
-    if (authState.user?.role === "CITIZEN") {
-      router.push("/dashboard");
-      return;
-    }
-
-    if (authState.user?.role === "ADMIN") {
-      router.push("/admin");
-      return;
-    }
-
-    setUser(authState.user);
-    loadFIRs();
-    if (authState.user?.role === "SHO" || authState.user?.role === "SUPER_ADMIN") {
-      loadAssignableOfficers();
-    } else {
-      setAssignableOfficers([]);
-    }
-    setIsLoading(false);
-  }, [router]);
-
   const loadFIRs = async () => {
     try {
       const { firs } = await getAllFIRs({ limit: 100 });
@@ -200,6 +173,35 @@ export default function PoliceDashboard() {
       setAssignableOfficers([]);
     }
   };
+
+  useEffect(() => {
+    if (!user) {
+      router.push("/auth");
+      return;
+    }
+
+    if (user.role === "CITIZEN") {
+      router.push("/dashboard");
+      return;
+    }
+
+    if (user.role === "ADMIN") {
+      router.push("/admin");
+      return;
+    }
+
+    const initialize = async () => {
+      await loadFIRs();
+      if (user.role === "SHO" || user.role === "SUPER_ADMIN") {
+        await loadAssignableOfficers();
+      } else {
+        setAssignableOfficers([]);
+      }
+      setIsLoading(false);
+    };
+
+    void initialize();
+  }, [user, router]);
 
   const filteredFIRs = firs.filter((fir) => {
     const matchesSearch =

@@ -52,13 +52,14 @@ export default function FIRDetailsPage() {
                     const data = await getFIRById(params.id as string);
                     setFir(data);
                 }
-            } catch (error: any) {
+            } catch (error: unknown) {
                 console.error("Failed to fetch FIR:", error);
-                if (error?.message === "AUTH_REQUIRED") {
+                const message = error instanceof Error ? error.message : undefined;
+                if (message === "AUTH_REQUIRED") {
                     router.push("/auth");
                     return;
                 }
-                if (error?.message === "FORBIDDEN") {
+                if (message === "FORBIDDEN") {
                     setErrorMessage("You do not have permission to view this FIR.");
                 } else {
                     setErrorMessage("Failed to load FIR details due to a server error. Please try again.");
@@ -310,7 +311,7 @@ export default function FIRDetailsPage() {
                         <CardContent>
                             <div className="space-y-3">
                                 {fir.documents && fir.documents.length > 0 ? (
-                                    fir.documents.map((doc: any) => (
+                                    fir.documents.map((doc) => (
                                         <div key={doc.id} className="flex items-center justify-between p-2 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
                                             <div className="flex items-center gap-3 overflow-hidden">
                                                 <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center flex-shrink-0">

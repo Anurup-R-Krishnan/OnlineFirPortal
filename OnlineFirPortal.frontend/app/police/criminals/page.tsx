@@ -134,7 +134,7 @@ export default function CriminalsPage() {
         }
     };
 
-    const getStatusColor = (status: string) => {
+    const getStatusColor = (status: string): "default" | "secondary" | "destructive" | "outline" => {
         switch (status) {
             case 'WANTED': return 'destructive';
             case 'IN_CUSTODY': return 'secondary';
@@ -182,7 +182,7 @@ export default function CriminalsPage() {
                                         {criminal.aliases ? `aka ${criminal.aliases}` : "No aliases"}
                                     </CardDescription>
                                 </div>
-                                <Badge variant={getStatusColor(criminal.status) as any}>
+                                <Badge variant={getStatusColor(criminal.status)}>
                                     {criminal.status.replace('_', ' ')}
                                 </Badge>
                             </div>

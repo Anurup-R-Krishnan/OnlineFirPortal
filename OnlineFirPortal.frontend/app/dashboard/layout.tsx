@@ -1,7 +1,7 @@
 "use client";
 
 import { Sidebar } from "@/components/dashboard/Sidebar";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-store";
 import { NotificationBell } from "@/components/ui/notification-bell";
@@ -9,30 +9,13 @@ import { NotificationBell } from "@/components/ui/notification-bell";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const { isAuthenticated, user } = useAuth();
-    const [authorized, setAuthorized] = useState(false);
-    const [isLoading, setIsLoading] = useState(true);
+    const authorized = isAuthenticated && !!user;
 
     useEffect(() => {
-        // Check auth state reactively
-        if (!isAuthenticated || !user) {
+        if (!authorized) {
             router.push("/auth");
-            setAuthorized(false);
-        } else {
-            setAuthorized(true);
         }
-        setIsLoading(false);
-    }, [isAuthenticated, user, router]);
-
-    if (isLoading) {
-        return (
-            <div className="flex h-screen items-center justify-center bg-background">
-                <div className="animate-pulse flex flex-col items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-primary/20"></div>
-                    <div className="h-4 w-48 rounded bg-muted"></div>
-                </div>
-            </div>
-        );
-    }
+    }, [authorized, router]);
 
     if (!authorized) return null;
 

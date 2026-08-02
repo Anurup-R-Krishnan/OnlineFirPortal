@@ -71,8 +71,8 @@ export default function PrivacyPage() {
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p>
-                  This Privacy Policy describes how the Online FIR Portal ("we,"
-                  "us," or "the Portal") collects, uses, stores, and protects your
+                  This Privacy Policy describes how the Online FIR Portal (&quot;we,&quot;
+                  &quot;us,&quot; or &quot;the Portal&quot;) collects, uses, stores, and protects your
                   personal information when you use our services.
                 </p>
                 <p>
@@ -410,7 +410,7 @@ export default function PrivacyPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>9. Children's Privacy</CardTitle>
+                <CardTitle>9. Children&apos;s Privacy</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <p>

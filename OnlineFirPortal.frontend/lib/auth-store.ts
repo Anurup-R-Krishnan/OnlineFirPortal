@@ -1,5 +1,5 @@
 import { type UserRole } from './security';
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
 
 export interface User {
     id: string;
@@ -169,32 +169,37 @@ function saveState() {
     }
 }
 
+function subscribeAuthChanges(callback: () => void) {
+    if (typeof window === 'undefined') {
+        return () => { };
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+        if (event.key === STORAGE_KEY) {
+            callback();
+        }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener(AUTH_STATE_EVENT, callback);
+
+    return () => {
+        window.removeEventListener('storage', handleStorage);
+        window.removeEventListener(AUTH_STATE_EVENT, callback);
+    };
+}
+
+/**
+ * Subscribes a component to the auth store. The server snapshot is the
+ * unauthenticated default; React swaps in the real client snapshot during
+ * hydration, so components never read localStorage during server rendering.
+ */
 export function useAuth() {
-    const [state, setState] = useState(getAuthState());
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        const updateState = () => {
-            const newState = getAuthState();
-            setState((prev) => (JSON.stringify(prev) === JSON.stringify(newState) ? prev : newState));
-        };
-
-        const handleStorage = (event: StorageEvent) => {
-            if (event.key === STORAGE_KEY) {
-                updateState();
-            }
-        };
-
-        window.addEventListener('storage', handleStorage);
-        window.addEventListener(AUTH_STATE_EVENT, updateState);
-        updateState();
-
-        return () => {
-            window.removeEventListener('storage', handleStorage);
-            window.removeEventListener(AUTH_STATE_EVENT, updateState);
-        };
-    }, []);
+    const state = useSyncExternalStore(
+        subscribeAuthChanges,
+        getAuthState,
+        getAuthState,
+    );
 
     return {
         ...state,
