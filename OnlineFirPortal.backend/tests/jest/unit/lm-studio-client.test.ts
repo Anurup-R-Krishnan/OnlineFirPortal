@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from '@jest/globals';
+import { describe, it, expect, jest, beforeEach } from '@jest/globals';
 import { getAdvisory, LMStudioConfig } from '../../../src/lib/lm-studio-client';
 import { TriageInput } from '../../../src/lib/triage-engine';
 
@@ -19,7 +19,7 @@ const mockInput: TriageInput = {
 
 describe('getAdvisory', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    jest.restoreAllMocks();
   });
 
   it('should return advisory on successful response', async () => {
@@ -30,12 +30,12 @@ describe('getAdvisory', () => {
       reasoning: 'Weapon involvement with ongoing incident requires immediate response',
     };
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({
         choices: [{ message: { content: JSON.stringify(advisoryResponse) } }],
       }),
-    }));
+    } as Response);
 
     const result = await getAdvisory(mockInput, defaultConfig);
     expect(result).not.toBeNull();
@@ -45,31 +45,31 @@ describe('getAdvisory', () => {
   });
 
   it('should return null on fetch failure', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
 
     const result = await getAdvisory(mockInput, defaultConfig);
     expect(result).toBeNull();
   });
 
   it('should return null on invalid JSON response', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({
         choices: [{ message: { content: 'not valid json' } }],
       }),
-    }));
+    } as Response);
 
     const result = await getAdvisory(mockInput, defaultConfig);
     expect(result).toBeNull();
   });
 
   it('should return null on schema validation failure', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({
         choices: [{ message: { content: JSON.stringify({ invalid: 'schema' }) } }],
       }),
-    }));
+    } as Response);
 
     const result = await getAdvisory(mockInput, defaultConfig);
     expect(result).toBeNull();

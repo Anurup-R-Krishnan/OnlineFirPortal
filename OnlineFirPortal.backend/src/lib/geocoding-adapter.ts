@@ -17,6 +17,14 @@ const cache = new Map<string, GeocodeResult>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const cacheTimestamps = new Map<string, number>();
 
+/**
+ * Clear the geocoding cache (useful for testing)
+ */
+export function clearCache(): void {
+  cache.clear();
+  cacheTimestamps.clear();
+}
+
 export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
   const normalizedQuery = query.trim().toLowerCase();
 

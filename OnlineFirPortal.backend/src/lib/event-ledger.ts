@@ -34,7 +34,18 @@ export interface VerificationResult {
 const GENESIS_HASH = '0'.repeat(64);
 
 function canonicalize(data: Record<string, unknown>): string {
-  return JSON.stringify(data, Object.keys(data).sort());
+  // Recursively sort all object keys for deterministic hashing
+  function sortKeys(obj: unknown): unknown {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(sortKeys);
+    return Object.keys(obj as Record<string, unknown>)
+      .sort()
+      .reduce((sorted, key) => {
+        sorted[key] = sortKeys((obj as Record<string, unknown>)[key]);
+        return sorted;
+      }, {} as Record<string, unknown>);
+  }
+  return JSON.stringify(sortKeys(data));
 }
 
 function computeHash(event: Omit<LedgerEvent, 'currentHash'>): string {
