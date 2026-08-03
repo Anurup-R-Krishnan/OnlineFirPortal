@@ -1,0 +1,44 @@
+[
+  {
+    "id": "stn-tvm-city-central",
+    "name": "Thiruvananthapuram City Central",
+    "polygon": [
+      [76.93, 8.49], [76.96, 8.49], [76.96, 8.52], [76.93, 8.52], [76.93, 8.49]
+    ]
+  },
+  {
+    "id": "stn-fort",
+    "name": "Fort Station",
+    "polygon": [
+      [76.94, 8.48], [76.96, 8.48], [76.96, 8.50], [76.94, 8.50], [76.94, 8.48]
+    ]
+  },
+  {
+    "id": "stn-neyyattinkara",
+    "name": "Neyyattinkara Station",
+    "polygon": [
+      [76.95, 8.40], [77.00, 8.40], [77.00, 8.45], [76.95, 8.45], [76.95, 8.40]
+    ]
+  },
+  {
+    "id": "stn-attingal",
+    "name": "Attingal Station",
+    "polygon": [
+      [76.85, 8.55], [76.90, 8.55], [76.90, 8.60], [76.85, 8.60], [76.85, 8.55]
+    ]
+  },
+  {
+    "id": "stn-nedumangad",
+    "name": "Nedumangad Station",
+    "polygon": [
+      [76.95, 8.55], [77.00, 8.55], [77.00, 8.60], [76.95, 8.60], [76.95, 8.55]
+    ]
+  },
+  {
+    "id": "stn-vizhinjam",
+    "name": "Vizhinjam Station",
+    "polygon": [
+      [76.90, 8.40], [76.95, 8.40], [76.95, 8.45], [76.90, 8.45], [76.90, 8.40]
+    ]
+  }
+]

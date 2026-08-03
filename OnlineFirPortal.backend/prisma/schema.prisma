@@ -600,3 +600,87 @@ model DutyShift {
   @@index([startTime])
   @@index([status])
 }
+
+// --- Redesign Models (2026-08-03) ---
+
+model EventLedger {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  // event identity
+  eventId         String   @unique
+  caseId          String
+  sequenceNumber  Int
+
+  // event details
+  eventType       String   // e.g., FIR_SUBMITTED, FIR_ACCEPTED
+  timestamp       String   // ISO 8601
+
+  // actor
+  actorId         String
+  actorRole       String   // citizen, police, admin
+
+  // payload (JSON string)
+  payload         String
+
+  // hash chain
+  previousHash    String
+  currentHash     String
+
+  @@index([caseId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model SLADeadline {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // case reference
+  firId           String   @unique
+
+  // priority
+  priority        String   // P0, P1, P2, P3, P4
+
+  // targets (in hours)
+  responseTargetHours    Int
+  resolutionTargetHours  Int
+
+  // status
+  status          String   @default("ACTIVE") // ACTIVE, PAUSED, COMPLETED, BREACHED
+
+  // tracking
+  responseAt      DateTime? // when response was delivered
+  resolutionAt    DateTime? // when case was resolved
+
+  @@index([firId])
+  @@index([status])
+  @@index([priority])
+}
+
+model JurisdictionLog {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  // case reference
+  firId           String
+
+  // routing result
+  stationId       String
+  stationName     String
+  confidence      Float
+  method          String   // polygon_match, nearest_station
+
+  // input
+  inputLat        Float?
+  inputLng        Float?
+  inputAddress    String?
+
+  // explanation
+  explanation     String
+
+  @@index([firId])
+  @@index([stationId])
+  @@index([createdAt])
+}
