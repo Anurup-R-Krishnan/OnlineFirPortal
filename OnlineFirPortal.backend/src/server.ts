@@ -10,6 +10,7 @@ import documentRoutes from './routes/documents';
 import notificationRoutes from './routes/notifications';
 import securityLabRoutes from './routes/security-lab';
 import jurisdictionRoutes from './routes/jurisdiction';
+import triageRoutes from './routes/triage';
 import { securityHeaders, apiLimiter, authLimiter, hppMiddleware, sanitizeInputs } from './lib/security-middleware';
 
 export const app = express();
@@ -66,6 +67,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/security-lab', securityLabRoutes);
 app.use('/api/jurisdiction', jurisdictionRoutes);
+app.use('/api/triage', triageRoutes);
 
 // Station Module Routes
 import evidenceRoutes from './routes/evidence';
