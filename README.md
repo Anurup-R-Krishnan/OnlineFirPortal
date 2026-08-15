@@ -392,7 +392,7 @@ Genuine technical gaps, in rough priority order:
    encryption keys.
 2. Real SMS/email adapters behind the existing provider interface.
 3. Postgres and SQLite parity in the test matrix.
-4. A production-grade external identity verification path.
+4. An external identity-verification integration with documented privacy boundaries.
 5. Broader Playwright coverage of the officer and admin journeys.
 6. A formal security review pass.
 
