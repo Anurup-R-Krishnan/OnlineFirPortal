@@ -1,4 +1,18 @@
-# OnlineFirPortal
+<div align="center">
+
+# 🧾 OnlineFirPortal
+
+### Accessible FIR filing and accountable case workflows
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-full%20stack-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](OnlineFirPortal.frontend/)
+[![React](https://img.shields.io/badge/React-citizen%20portal-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](OnlineFirPortal.frontend/)
+[![Node.js](https://img.shields.io/badge/Node.js-API-339933?style=for-the-badge&logo=node.js&logoColor=white)](OnlineFirPortal.backend/)
+[![Security](https://img.shields.io/badge/security-audit%20trail-6C5CE7?style=for-the-badge)](SECURITY.md)
+[![Prototype](https://img.shields.io/badge/type-research%20prototype-E76F51?style=for-the-badge)](#limitations-and-non-goals)
+
+<p><a href="#the-problem">Problem</a> · <a href="#architecture">Architecture</a> · <a href="#getting-started">Quickstart</a> · <a href="#limitations-and-non-goals">Boundaries</a></p>
+
+</div>
 
 An accessible 24/7 First Information Report (FIR) filing platform where
 citizens gain a trackable reporting path and police workflows keep evidence
